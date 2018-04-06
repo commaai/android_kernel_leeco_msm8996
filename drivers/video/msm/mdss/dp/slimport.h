@@ -29,7 +29,7 @@
 #include <linux/err.h>
 #include <linux/errno.h>
 #include <linux/async.h>
-#include <slimport.h>
+#include "slimport.h"
 #include <linux/clk.h>
 
 #include "slimport_tx_drv.h"
