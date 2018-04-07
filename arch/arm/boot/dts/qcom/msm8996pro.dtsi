@@ -1193,9 +1193,9 @@
 
 &msm_cpufreq {
 	qcom,cpufreq-table-0 =
-    < 1593600 >;
+    < 1516800 >;
 	qcom,cpufreq-table-2 =
-    < 1670400 >;
+    < 1516800 >;
 };
 
 &m4m_cache {
