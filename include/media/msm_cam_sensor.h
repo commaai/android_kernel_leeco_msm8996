@@ -214,7 +214,7 @@ struct msm_actuator_cfg_data32 {
 		enum af_camera_name cam_name;
 	} cfg;
 	/* MOD-S: 20150612, storing actuator_name from vendor */
-	char actuator_name[32];
+	//char actuator_name[32];
 	/* MOD-E: 20150612, storing actuator_name from vendor */
 };
 
