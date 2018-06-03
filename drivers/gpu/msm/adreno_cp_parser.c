@@ -787,7 +787,7 @@ static int adreno_cp_parse_ib2(struct kgsl_device *device,
 			struct adreno_ib_object_list *ib_obj_list,
 			int ib_level)
 {
-	struct adreno_ib_object *ib_obj;
+	struct adreno_ib_object *ib_obj = NULL;
 	int i;
 	/*
 	 * We can only expect an IB2 in IB1, if we are
@@ -799,13 +799,14 @@ static int adreno_cp_parse_ib2(struct kgsl_device *device,
 	 * only try to find sub objects iff this IB has
 	 * not been processed already
 	 */
-	for (i = 0; i < ib_obj_list->num_objs; i++)
+	for (i = 0; i < ib_obj_list->num_objs; i++) {
 		ib_obj = &(ib_obj_list->obj_list[i]);
 		if ((SNAPSHOT_GPU_OBJECT_IB == ib_obj->snapshot_obj_type) &&
 			(gpuaddr >= ib_obj->gpuaddr) &&
 			(gpuaddr + dwords * sizeof(unsigned int) <=
 			ib_obj->gpuaddr + ib_obj->size))
 			return 0;
+	}
 
 	return adreno_ib_find_objs(device, process, gpuaddr, dwords,
 		SNAPSHOT_GPU_OBJECT_IB, ib_obj_list, 2);
