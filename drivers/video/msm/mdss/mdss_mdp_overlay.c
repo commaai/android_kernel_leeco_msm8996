@@ -49,7 +49,6 @@
 	((flags & MDSS_MDP_RIGHT_MIXER) || (dst_x >= left_lm_w))
 
 #define BUF_POOL_SIZE 32
-static struct workqueue_struct *letv_retire_wq;
 
 static int mdss_mdp_overlay_free_fb_pipe(struct msm_fb_data_type *mfd);
 static int mdss_mdp_overlay_fb_parse_dt(struct msm_fb_data_type *mfd);
@@ -1082,7 +1081,7 @@ struct mdss_mdp_data *mdss_mdp_overlay_buf_alloc(struct msm_fb_data_type *mfd,
 	list_move_tail(&buf->buf_list, &mdp5_data->bufs_used);
 	list_add_tail(&buf->pipe_list, &pipe->buf_queue);
 
-	pr_debug("buffer alloc: %p\n", buf);
+	pr_debug("buffer alloc: %pK\n", buf);
 
 	return buf;
 }
@@ -1136,7 +1135,7 @@ void mdss_mdp_overlay_buf_free(struct msm_fb_data_type *mfd,
 	buf->last_freed = local_clock();
 	buf->state = MDP_BUF_STATE_UNUSED;
 
-	pr_debug("buffer freed: %p\n", buf);
+	pr_debug("buffer freed: %pK\n", buf);
 
 	list_move_tail(&buf->buf_list, &mdp5_data->bufs_pool);
 }
@@ -1487,7 +1486,7 @@ static int __overlay_queue_pipes(struct msm_fb_data_type *mfd)
 		if (buf) {
 			switch (buf->state) {
 			case MDP_BUF_STATE_READY:
-				pr_debug("pnum=%d buf=%p first buffer ready\n",
+				pr_debug("pnum=%d buf=%pK first buffer ready\n",
 						pipe->num, buf);
 				break;
 			case MDP_BUF_STATE_ACTIVE:
@@ -1507,7 +1506,7 @@ static int __overlay_queue_pipes(struct msm_fb_data_type *mfd)
 				}
 				break;
 			default:
-				pr_err("invalid state of buf %p=%d\n",
+				pr_err("invalid state of buf %pK=%d\n",
 						buf, buf->state);
 				BUG();
 				break;
@@ -1685,7 +1684,6 @@ int mdss_mode_switch(struct msm_fb_data_type *mfd, u32 mode)
 {
 	struct mdss_rect l_roi, r_roi;
 	struct mdss_mdp_ctl *ctl = mfd_to_ctl(mfd);
-	struct mdss_overlay_private *mdp5_data = mfd_to_mdp5_data(mfd);
 	struct mdss_mdp_ctl *sctl;
 	int rc;
 
@@ -1700,42 +1698,9 @@ int mdss_mode_switch(struct msm_fb_data_type *mfd, u32 mode)
 	/* No need for mode validation. It has been done in ioctl call */
 	if (mode == SWITCH_RESOLUTION) {
 		if (ctl->ops.reconfigure) {
-			/* wait for previous frame to complete before switch */
-			if (ctl->ops.wait_pingpong)
-				rc = ctl->ops.wait_pingpong(ctl, NULL);
-			if (!rc && sctl && sctl->ops.wait_pingpong)
-				rc = sctl->ops.wait_pingpong(sctl, NULL);
-			if (rc) {
-				pr_err("wait for pp failed before resolution switch\n");
+			rc = ctl->ops.reconfigure(ctl, mode, 1);
+			if (rc)
 				return rc;
-			}
-
-			/*
-			* Configure the mixer parameters before the switch as
-			* the DSC parameter calculation is based on the mixer
-			* ROI. And set it to full ROI as driver expects the
-			* first frame after the resolution switch to be a
-			* full frame update.
-			*/
-			if (ctl->mixer_left) {
-				l_roi = (struct mdss_rect) {0, 0,
-					ctl->mixer_left->width,
-					ctl->mixer_left->height};
-				ctl->mixer_left->roi_changed = true;
-				ctl->mixer_left->valid_roi = true;
-			}
-			if (ctl->mixer_right) {
-				r_roi = (struct mdss_rect) {0, 0,
-					ctl->mixer_right->width,
-					ctl->mixer_right->height};
-				ctl->mixer_right->roi_changed = true;
-				ctl->mixer_right->valid_roi = true;
-			}
-			mdss_mdp_set_roi(ctl, &l_roi, &r_roi);
-
-			mutex_lock(&mdp5_data->ov_lock);
-			ctl->ops.reconfigure(ctl, mode, 1);
-			mutex_unlock(&mdp5_data->ov_lock);
 		/*
 		 * For Video mode panels, reconfigure is not defined.
 		 * So doing an explicit ctrl stop during resolution switch
@@ -1859,13 +1824,7 @@ static void __validate_and_set_roi(struct msm_fb_data_type *mfd,
 		l_roi.x, l_roi.y, l_roi.w, l_roi.h,
 		r_roi.x, r_roi.y, r_roi.w, r_roi.h);
 
-	/*
-	 * Configure full ROI
-	 * - If partial update is disabled
-	 * - If it is the first frame update after dynamic resolution switch
-	 */
-	if (!ctl->panel_data->panel_info.partial_update_enabled
-			|| (ctl->pending_mode_switch == SWITCH_RESOLUTION))
+	if (!ctl->panel_data->panel_info.partial_update_enabled)
 		goto set_roi;
 
 	skip_partial_update = false;
@@ -3033,7 +2992,7 @@ static int __mdss_mdp_overlay_release_all(struct msm_fb_data_type *mfd,
 	u32 unset_ndx = 0;
 	int cnt = 0;
 
-	pr_debug("releasing all resources for fb%d file:%p\n",
+	pr_debug("releasing all resources for fb%d file:%pK\n",
 		mfd->index, file);
 
 	mutex_lock(&mdp5_data->ov_lock);
@@ -5734,7 +5693,6 @@ static int mdss_mdp_overlay_off(struct msm_fb_data_type *mfd)
 	struct mdss_data_type *mdata = mdss_mdp_get_mdata();
 	struct mdss_mdp_mixer *mixer;
 	int need_cleanup;
-	int retire_cnt;
 
 	if (!mfd)
 		return -ENODEV;
@@ -5802,17 +5760,14 @@ static int mdss_mdp_overlay_off(struct msm_fb_data_type *mfd)
 	 * for retire fence to be updated.
 	 * As a last resort signal the timeline if vsync doesn't arrive.
 	 */
-
 	if (mdp5_data->retire_cnt) {
 		u32 fps = mdss_panel_get_framerate(mfd->panel_info,
 				FPS_RESOLUTION_HZ);
 		u32 vsync_time = 1000 / (fps ? : DEFAULT_FRAME_RATE);
 
 		msleep(vsync_time);
-		mutex_lock(&mfd->mdp_sync_pt_data.sync_mutex);
-		retire_cnt = mdp5_data->retire_cnt;
-		mutex_unlock(&mfd->mdp_sync_pt_data.sync_mutex);
-		__vsync_retire_signal(mfd, retire_cnt);
+
+		__vsync_retire_signal(mfd, mdp5_data->retire_cnt);
 
 		/*
 		 * the retire work can still schedule after above retire_signal
@@ -6027,7 +5982,7 @@ static void __vsync_retire_handle_vsync(struct mdss_mdp_ctl *ctl, ktime_t t)
 	}
 
 	mdp5_data = mfd_to_mdp5_data(mfd);
-	queue_work(letv_retire_wq, &mdp5_data->retire_work);
+	schedule_work(&mdp5_data->retire_work);
 }
 
 static void __vsync_retire_work_handler(struct work_struct *work)
@@ -6098,13 +6053,9 @@ static int __vsync_set_vsync_handler(struct msm_fb_data_type *mfd)
 	struct mdss_overlay_private *mdp5_data = mfd_to_mdp5_data(mfd);
 	struct mdss_mdp_ctl *ctl;
 	int rc;
-	int retire_cnt;
 
 	ctl = mdp5_data->ctl;
-	mutex_lock(&mfd->mdp_sync_pt_data.sync_mutex);
-	retire_cnt = mdp5_data->retire_cnt;
-	mutex_unlock(&mfd->mdp_sync_pt_data.sync_mutex);
-	if (!retire_cnt ||
+	if (!mdp5_data->retire_cnt ||
 		mdp5_data->vsync_retire_handler.enabled)
 		return 0;
 
@@ -6148,7 +6099,6 @@ static int mdss_mdp_update_panel_info(struct msm_fb_data_type *mfd,
 	int ret = 0;
 	struct mdss_overlay_private *mdp5_data = mfd_to_mdp5_data(mfd);
 	struct mdss_mdp_ctl *ctl = mdp5_data->ctl;
-	struct mdss_data_type *mdata = mdss_mdp_get_mdata();
 	struct mdss_panel_data *pdata;
 	struct mdss_mdp_ctl *sctl;
 
@@ -6181,13 +6131,6 @@ static int mdss_mdp_update_panel_info(struct msm_fb_data_type *mfd,
 		 * destroying current ctrl sturcture.
 		 */
 		mdss_mdp_ctl_reconfig(ctl, pdata);
-
-		/*
-		 * Set flag when dynamic resolution switch happens before
-		 * handoff of cont-splash
-		 */
-		if (mdata->handoff_pending)
-			ctl->switch_with_handoff = true;
 
 		sctl = mdss_mdp_get_split_ctl(ctl);
 		if (sctl) {
@@ -6237,12 +6180,6 @@ int mdss_mdp_overlay_init(struct msm_fb_data_type *mfd)
 	struct mdss_overlay_private *mdp5_data = NULL;
 	struct irq_info *mdss_irq;
 	int rc;
-
-	letv_retire_wq = alloc_workqueue("letv_retire_wq", WQ_UNBOUND | WQ_HIGHPRI, 0);
-	if (!letv_retire_wq) {
-		pr_err("fail to allocate letv_retire_wq");
-		return -ENOMEM;
-	}
 
 	mdp5_data = kzalloc(sizeof(struct mdss_overlay_private), GFP_KERNEL);
 	if (!mdp5_data) {

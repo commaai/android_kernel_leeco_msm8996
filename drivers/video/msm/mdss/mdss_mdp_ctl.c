@@ -3362,28 +3362,10 @@ int mdss_mdp_ctl_reconfig(struct mdss_mdp_ctl *ctl,
 skip_intf_reconfig:
 	ctl->width = get_panel_xres(&pdata->panel_info);
 	ctl->height = get_panel_yres(&pdata->panel_info);
-
-	if (ctl->mfd->split_mode == MDP_DUAL_LM_SINGLE_DISPLAY) {
-		if (ctl->mixer_left) {
-			ctl->mixer_left->width = ctl->width / 2;
-			ctl->mixer_left->height = ctl->height;
-		}
-		if (ctl->mixer_right) {
-			ctl->mixer_right->width = ctl->width / 2;
-			ctl->mixer_right->height = ctl->height;
-		}
-	} else {
-		/*
-		 * Handles MDP_SPLIT_MODE_NONE, MDP_DUAL_LM_DUAL_DISPLAY and
-		 * MDP_PINGPONG_SPLIT case.
-		 */
-		if (ctl->mixer_left) {
-			ctl->mixer_left->width = ctl->width;
-			ctl->mixer_left->height = ctl->height;
-		}
+	if (ctl->mixer_left) {
+		ctl->mixer_left->width = ctl->width;
+		ctl->mixer_left->height = ctl->height;
 	}
-	ctl->roi = (struct mdss_rect) {0, 0, ctl->width, ctl->height};
-
 	ctl->border_x_off = pdata->panel_info.lcdc.border_left;
 	ctl->border_y_off = pdata->panel_info.lcdc.border_top;
 
@@ -3715,13 +3697,7 @@ static void mdss_mdp_ctl_restore_sub(struct mdss_mdp_ctl *ctl)
 		mdss_mdp_pp_resume(ctl->mfd);
 
 		if (is_dsc_compression(&ctl->panel_data->panel_info)) {
-			/*
-			 * Avoid redundant call to dsc_setup when mode switch
-			 * is in progress. During the switch, dsc_setup is
-			 * handled in mdss_mode_switch() function.
-			 */
-			if (ctl->pending_mode_switch != SWITCH_RESOLUTION)
-				mdss_mdp_ctl_dsc_setup(ctl,
+			mdss_mdp_ctl_dsc_setup(ctl,
 					&ctl->panel_data->panel_info);
 		} else if (ctl->panel_data->panel_info.compression_mode ==
 				COMPRESSION_FBC) {
@@ -4678,14 +4654,14 @@ int mdss_mdp_get_pipe_flush_bits(struct mdss_mdp_pipe *pipe)
 	u32 flush_bits;
 
 	if (pipe->type == MDSS_MDP_PIPE_TYPE_DMA)
-		flush_bits |= BIT(pipe->num) << 5;
+		flush_bits = BIT(pipe->num) << 5;
 	else if (pipe->num == MDSS_MDP_SSPP_VIG3 ||
 			pipe->num == MDSS_MDP_SSPP_RGB3)
-		flush_bits |= BIT(pipe->num) << 10;
+		flush_bits = BIT(pipe->num) << 10;
 	else if (pipe->type == MDSS_MDP_PIPE_TYPE_CURSOR)
-		flush_bits |= BIT(22 + pipe->num - MDSS_MDP_SSPP_CURSOR0);
+		flush_bits = BIT(22 + pipe->num - MDSS_MDP_SSPP_CURSOR0);
 	else /* RGB/VIG 0-2 pipes */
-		flush_bits |= BIT(pipe->num);
+		flush_bits = BIT(pipe->num);
 
 	return flush_bits;
 }

@@ -93,11 +93,6 @@ config MSM_MEMORY_DUMP_V2
 	  of deadlocks or cpu hangs these dump regions are captured to
 	  give a snapshot of the system at the time of the crash.
 
-config DEEP_SLEEP_LED_SWITCH
-	bool "deep sleep led indicator"
-	help
-	  This will enable deep sleep led indicating for system status.
-
 config MSM_DEBUG_LAR_UNLOCK
 	bool "MSM Debug LAR Unlock Support"
 	depends on MSM_MEMORY_DUMP_V2
@@ -307,10 +302,6 @@ menuconfig MSM_SCM_XPU
 
 if MSM_SCM_XPU
 
-choice
-	prompt "XPU Violation Behavior"
-	default MSM_XPU_ERR_FATAL
-
 config MSM_XPU_ERR_FATAL
 	bool "Configure XPU violations as fatal errors"
 	help
@@ -321,12 +312,9 @@ config MSM_XPU_ERR_NONFATAL
 	help
 	 Select if XPU violations have to be configured as non-fatal errors.
 
-endchoice
-
 endif
 
 config MSM_SCM_ERRATA
-	depends on DEBUG_FS
 	depends on MSM_SCM
 	bool "Support for enabling/disabling errata workarounds via debugfs"
 	help
@@ -665,14 +653,6 @@ config ICNSS
 	  subsystem. This module is responsible for communicating WLAN on/off
 	  control messages to FW over QMI channel. It is also responsible for
 	  handling WLAN PD restart notifications.
-
-config MSM_CORE_CTL_HELPER
-	tristate "Core control helper functions for dynamically hotplug CPUs"
-	help
-	  Provide helper functions for core control driver. Core control
-	  driver dynamically hotplugs CPUs from kernel based on current
-	  system load and state. It also supports limiting min and
-	  max online CPUs from userspace.
 
 config MSM_BAM_DMUX
 	bool "BAM Data Mux Driver"

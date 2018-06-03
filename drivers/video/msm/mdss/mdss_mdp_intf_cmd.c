@@ -31,7 +31,6 @@
 #define INPUT_EVENT_HANDLER_DELAY_USECS (16000 * 4)
 #define AUTOREFRESH_MAX_FRAME_CNT 6
 
-static struct workqueue_struct *letv_pp_wq;
 static DEFINE_MUTEX(cmd_clk_mtx);
 
 enum mdss_mdp_cmd_autorefresh_state {
@@ -1100,7 +1099,8 @@ static void mdss_mdp_cmd_pingpong_done(void *arg)
 			       atomic_read(&ctx->koff_cnt));
 		if (mdss_mdp_cmd_do_notifier(ctx)) {
 			atomic_inc(&ctx->pp_done_cnt);
-			queue_work(letv_pp_wq, &ctx->pp_done_work);
+			schedule_work(&ctx->pp_done_work);
+
 			mdss_mdp_resource_control(ctl,
 				MDP_RSRC_CTL_EVENT_PP_DONE);
 		}
@@ -1761,6 +1761,29 @@ int mdss_mdp_cmd_reconfigure_splash_done(struct mdss_mdp_ctl *ctl,
 	return ret;
 }
 
+static int __mdss_mdp_wait4pingpong(struct mdss_mdp_cmd_ctx *ctx)
+{
+	int rc = 0;
+	s64 expected_time = ktime_to_ms(ktime_get()) + KOFF_TIMEOUT_MS;
+	s64 time;
+
+	do {
+		rc = wait_event_timeout(ctx->pp_waitq,
+				atomic_read(&ctx->koff_cnt) == 0,
+				KOFF_TIMEOUT);
+		time = ktime_to_ms(ktime_get());
+
+		MDSS_XLOG(rc, time, expected_time, atomic_read(&ctx->koff_cnt));
+		/*
+		 * If we time out, counter is valid and time is less,
+		 * wait again.
+		 */
+	} while (atomic_read(&ctx->koff_cnt) && (rc == 0) &&
+			(time < expected_time));
+
+	return rc;
+}
+
 static int mdss_mdp_cmd_wait4pingpong(struct mdss_mdp_ctl *ctl, void *arg)
 {
 	struct mdss_mdp_cmd_ctx *ctx;
@@ -1779,12 +1802,10 @@ static int mdss_mdp_cmd_wait4pingpong(struct mdss_mdp_ctl *ctl, void *arg)
 	MDSS_XLOG(ctl->num, atomic_read(&ctx->koff_cnt), ctl->roi_bkup.w,
 			ctl->roi_bkup.h);
 
-	pr_debug("%s: intf_num=%d ctx=%p koff_cnt=%d\n", __func__,
+	pr_debug("%s: intf_num=%d ctx=%pK koff_cnt=%d\n", __func__,
 			ctl->intf_num, ctx, atomic_read(&ctx->koff_cnt));
 
-	rc = wait_event_timeout(ctx->pp_waitq,
-			atomic_read(&ctx->koff_cnt) == 0,
-			KOFF_TIMEOUT);
+	rc = __mdss_mdp_wait4pingpong(ctx);
 
 	trace_mdp_cmd_wait_pingpong(ctl->num,
 				atomic_read(&ctx->koff_cnt));
@@ -1971,11 +1992,10 @@ static int mdss_mdp_cmd_panel_on(struct mdss_mdp_ctl *ctl,
 			WARN(rc, "intf %d panel on error (%d)\n",
 					ctl->intf_num, rc);
 
+			rc = mdss_mdp_tearcheck_enable(ctl, true);
+			WARN(rc, "intf %d tearcheck enable error (%d)\n",
+					ctl->intf_num, rc);
 		}
-
-		rc = mdss_mdp_tearcheck_enable(ctl, true);
-		WARN(rc, "intf %d tearcheck enable error (%d)\n",
-				ctl->intf_num, rc);
 
 		ctx->panel_power_state = MDSS_PANEL_POWER_ON;
 		if (sctx)
@@ -2007,7 +2027,7 @@ int mdss_mdp_cmd_set_autorefresh_mode(struct mdss_mdp_ctl *mctl, int frame_cnt)
 	struct mdss_panel_info *pinfo;
 
 	if (!mctl || !mctl->is_master || !mctl->panel_data) {
-		pr_err("invalid ctl mctl:%p pdata:%p\n",
+		pr_err("invalid ctl mctl:%pK pdata:%pK\n",
 			mctl, mctl ? mctl->panel_data : 0);
 		return -ENODEV;
 	}
@@ -3062,7 +3082,7 @@ static int mdss_mdp_cmd_ctx_setup(struct mdss_mdp_ctl *ctl,
 
 	ctx->intf_stopped = 0;
 
-	pr_debug("%s: ctx=%p num=%d aux=%d\n", __func__, ctx,
+	pr_debug("%s: ctx=%pK num=%d aux=%d\n", __func__, ctx,
 		default_pp_num, aux_pp_num);
 	MDSS_XLOG(ctl->num, atomic_read(&ctx->koff_cnt));
 
@@ -3075,12 +3095,6 @@ static int mdss_mdp_cmd_ctx_setup(struct mdss_mdp_ctl *ctl,
 	ret = mdss_mdp_cmd_tearcheck_setup(ctx, false);
 	if (ret)
 		pr_err("tearcheck setup failed\n");
-
-	letv_pp_wq = alloc_workqueue("letv_pingpong_wq", WQ_UNBOUND | WQ_HIGHPRI, 0);
-	if (!letv_pp_wq) {
-		pr_err("fail to allocate letv_pingpong_wq");
-		return -ENOMEM;
-	}
 
 	return ret;
 }
@@ -3267,6 +3281,9 @@ void mdss_mdp_switch_to_vid_mode(struct mdss_mdp_ctl *ctl, int prep)
 static int mdss_mdp_cmd_reconfigure(struct mdss_mdp_ctl *ctl,
 		enum dynamic_switch_modes mode, bool prep)
 {
+	struct dsi_panel_clk_ctrl clk_ctrl;
+	int ret, rc = 0;
+
 	if (mdss_mdp_ctl_is_power_off(ctl))
 		return 0;
 
@@ -3277,39 +3294,41 @@ static int mdss_mdp_cmd_reconfigure(struct mdss_mdp_ctl *ctl,
 		mdss_mdp_switch_to_vid_mode(ctl, prep);
 	} else if (mode == SWITCH_RESOLUTION) {
 		if (prep) {
+			/* make sure any pending transfer is finished */
+			ret = mdss_mdp_cmd_wait4pingpong(ctl, NULL);
+			if (ret)
+				return ret;
+
+			/*
+			 * keep a ref count on clocks to prevent them from
+			 * being disabled while switch happens
+			 */
+			mdss_bus_bandwidth_ctrl(true);
+			rc = mdss_iommu_ctrl(1);
+			if (IS_ERR_VALUE(rc))
+				pr_err("IOMMU attach failed\n");
+
+			clk_ctrl.state = MDSS_DSI_CLK_ON;
+			clk_ctrl.client = DSI_CLK_REQ_MDP_CLIENT;
 			mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_ON);
-			/*
-			 * Setup DSC conifg early, as DSI configuration during
-			 * resolution switch would rely on DSC params for
-			 * stream configs.
-			 */
-			mdss_mdp_cmd_dsc_reconfig(ctl);
-
-			/*
-			 * Make explicit cmd_panel_on call, when dynamic
-			 * resolution switch request comes before cont-splash
-			 * handoff, to match the ctl_stop/ctl_start done
-			 * during the reconfiguration.
-			 */
-			if (ctl->switch_with_handoff) {
-				struct mdss_mdp_cmd_ctx *ctx;
-				struct mdss_mdp_ctl *sctl;
-
-				ctx = (struct mdss_mdp_cmd_ctx *)
-					ctl->intf_ctx[MASTER_CTX];
-				if (ctx &&
-				     __mdss_mdp_cmd_is_panel_power_off(ctx)) {
-					sctl = mdss_mdp_get_split_ctl(ctl);
-					mdss_mdp_cmd_panel_on(ctl, sctl);
-				}
-				ctl->switch_with_handoff = false;
-			}
+			mdss_mdp_ctl_intf_event(ctl, MDSS_EVENT_PANEL_CLK_CTRL,
+					(void *)&clk_ctrl,
+					CTL_INTF_EVENT_FLAG_DEFAULT);
 
 			mdss_mdp_ctl_stop(ctl, MDSS_PANEL_POWER_OFF);
 			mdss_mdp_ctl_intf_event(ctl,
-				MDSS_EVENT_DSI_DYNAMIC_SWITCH,
-				(void *) mode, CTL_INTF_EVENT_FLAG_DEFAULT);
+					MDSS_EVENT_DSI_DYNAMIC_SWITCH,
+					(void *) mode,
+					CTL_INTF_EVENT_FLAG_DEFAULT);
 		} else {
+			/* release ref count after switch is complete */
+			clk_ctrl.state = MDSS_DSI_CLK_OFF;
+			clk_ctrl.client = DSI_CLK_REQ_MDP_CLIENT;
+			mdss_mdp_ctl_intf_event(ctl, MDSS_EVENT_PANEL_CLK_CTRL,
+					(void *)&clk_ctrl,
+					CTL_INTF_EVENT_FLAG_DEFAULT);
+			mdss_iommu_ctrl(0);
+			mdss_bus_bandwidth_ctrl(false);
 			mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_OFF);
 		}
 	}

@@ -409,6 +409,9 @@ static int cmdq_enable(struct mmc_host *mmc)
 	cq_host->enabled = true;
 	mmc_host_clr_cq_disable(mmc);
 
+	if (cq_host->ops->set_transfer_params)
+		cq_host->ops->set_transfer_params(mmc);
+
 	if (cq_host->ops->set_block_size)
 		cq_host->ops->set_block_size(cq_host->mmc);
 
@@ -730,8 +733,6 @@ static int cmdq_request(struct mmc_host *mmc, struct mmc_request *mrq)
 	}
 
 	cq_host->mrq_slot[tag] = mrq;
-	if (cq_host->ops->set_tranfer_params)
-		cq_host->ops->set_tranfer_params(mmc);
 
 	/* PM QoS */
 	sdhci_msm_pm_qos_irq_vote(host);
@@ -776,7 +777,7 @@ irqreturn_t cmdq_irq(struct mmc_host *mmc, int err)
 	unsigned long tag = 0, comp_status;
 	struct cmdq_host *cq_host = (struct cmdq_host *)mmc_cmdq_private(mmc);
 	unsigned long err_info = 0;
-	struct mmc_request *mrq;
+	struct mmc_request *mrq = NULL;
 	int ret;
 	u32 dbr_set = 0;
 
@@ -998,6 +999,10 @@ static int cmdq_halt(struct mmc_host *mmc, bool halt)
 		}
 		ret = retries ? 0 : -ETIMEDOUT;
 	} else {
+		if (cq_host->ops->set_transfer_params)
+			cq_host->ops->set_transfer_params(mmc);
+		if (cq_host->ops->set_block_size)
+			cq_host->ops->set_block_size(mmc);
 		if (cq_host->ops->set_data_timeout)
 			cq_host->ops->set_data_timeout(mmc, 0xf);
 		if (cq_host->ops->clear_set_irqs)

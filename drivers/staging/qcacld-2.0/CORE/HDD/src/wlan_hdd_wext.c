@@ -8646,7 +8646,7 @@ static int __iw_set_var_ints_getnone(struct net_device *dev,
                 }
                 if ((apps_args[1] > (WMA_MAX_NUM_ARGS)) ||
                     (apps_args[1] < 0)) {
-                    hddLog(LOGE, FL("Too Many args %d"), apps_args[1]);
+                    hddLog(LOGE, FL("Too Many/Few args %d"), apps_args[1]);
                     return -EINVAL;
                 }
                 unitTestArgs = vos_mem_malloc(sizeof(*unitTestArgs));
@@ -10855,7 +10855,7 @@ static int __iw_set_two_ints_getnone(struct net_device *dev,
     hdd_adapter_t *pAdapter = WLAN_HDD_GET_PRIV_PTR(dev);
     int *value = (int *)extra;
     int sub_cmd = value[0];
-    int ret;
+    int ret = 0;
     hdd_context_t *hdd_ctx = WLAN_HDD_GET_CTX(pAdapter);
 
     ret = wlan_hdd_validate_context(hdd_ctx);

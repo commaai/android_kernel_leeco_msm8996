@@ -468,7 +468,7 @@ static int __configure_pipe_params(struct msm_fb_data_type *mfd,
 	mixer = mdss_mdp_mixer_get(mdp5_data->ctl, mixer_mux);
 	pipe->src_fmt = mdss_mdp_get_format_params(layer->buffer.format);
 	if (!pipe->src_fmt || !mixer) {
-		pr_err("invalid layer format:%d or mixer:%p\n",
+		pr_err("invalid layer format:%d or mixer:%pK\n",
 				layer->buffer.format, pipe->mixer_left);
 		ret = -EINVAL;
 		goto end;
@@ -1176,14 +1176,14 @@ static int __validate_layers(struct msm_fb_data_type *mfd,
 	u32 mixer_mux, dst_x;
 	int layer_count = commit->input_layer_cnt;
 
-	struct mdss_mdp_pipe *pipe, *tmp, *left_blend_pipe;
+	struct mdss_mdp_pipe *pipe = NULL, *tmp, *left_blend_pipe;
 	struct mdss_mdp_pipe *right_plist[MAX_PIPES_PER_LM] = {0};
 	struct mdss_mdp_pipe *left_plist[MAX_PIPES_PER_LM] = {0};
 	struct mdss_overlay_private *mdp5_data = mfd_to_mdp5_data(mfd);
 
 	struct mdss_mdp_mixer *mixer = NULL;
 	struct mdp_input_layer *layer, *prev_layer, *layer_list;
-	bool is_single_layer = false, force_validate;
+	bool is_single_layer = false;
 	enum layer_pipe_q pipe_q_type;
 
 	ret = mutex_lock_interruptible(&mdp5_data->ov_lock);
@@ -1207,15 +1207,6 @@ static int __validate_layers(struct msm_fb_data_type *mfd,
 		}
 		inputndx |= layer_list[i].pipe_ndx;
 	}
-
-	/*
-	 * Force all layers to go through full validation after
-	 * dynamic resolution switch, immaterial of the configs in
-	 * the layer.
-	 */
-	mutex_lock(&mfd->switch_lock);
-	force_validate = (mfd->switch_state != MDSS_MDP_NO_UPDATE_REQUESTED);
-	mutex_unlock(&mfd->switch_lock);
 
 	for (i = 0; i < layer_count; i++) {
 		layer = &layer_list[i];
@@ -1264,8 +1255,7 @@ static int __validate_layers(struct msm_fb_data_type *mfd,
 		 * are same. validation can be skipped if only buffer handle
 		 * is changed.
 		 */
-		pipe = (force_validate) ? NULL :
-				__find_layer_in_validate_q(layer, mdp5_data);
+		pipe = __find_layer_in_validate_q(layer, mdp5_data);
 		if (pipe) {
 			if (mixer_mux == MDSS_MDP_MIXER_MUX_RIGHT)
 				right_plist[right_cnt++] = pipe;
@@ -1405,7 +1395,7 @@ validate_exit:
 			}
 		} else {
 			pipe->file = file;
-			pr_debug("file pointer attached with pipe is %p\n",
+			pr_debug("file pointer attached with pipe is %pK\n",
 				file);
 		}
 	}

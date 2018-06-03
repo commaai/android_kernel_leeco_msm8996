@@ -2,7 +2,7 @@
  *
  * Copyright (C) 2008 Google, Inc.
  * Copyright (C) 2008 HTC Corporation
- * Copyright (c) 2010-2015, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2010-2016, The Linux Foundation. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -54,7 +54,7 @@ static long audio_ioctl_shared(struct file *file, unsigned int cmd,
 	int rc = 0;
 
 	switch (cmd) {
-	case AUDIO_START: {
+	case AUDIO_START:
 		pr_err("%s[%p]: AUDIO_START session_id[%d]\n", __func__,
 			audio, audio->ac->session);
 		if (audio->feedback == NON_TUNNEL_MODE) {
@@ -104,10 +104,8 @@ static long audio_ioctl_shared(struct file *file, unsigned int cmd,
 		pr_debug("%s:AUDIO_START sessionid[%d]enable[%d]\n", __func__,
 			audio->ac->session,
 			audio->enabled);
-		if (audio->stopped == 1)
-			audio->stopped = 0;
-			break;
-		}
+		audio->stopped = 0;
+		break;
 	default:
 		pr_err("%s: Unknown ioctl cmd = %d", __func__, cmd);
 		rc = -EINVAL;
@@ -312,6 +310,8 @@ static int audio_open(struct inode *inode, struct file *file)
 	audio->miscdevice = &audio_amrwbplus_misc;
 	audio->wakelock_voted = false;
 	audio->audio_ws_mgr = &audio_amrwbplus_ws_mgr;
+
+	init_waitqueue_head(&audio->event_wait);
 
 	audio->ac =
 	q6asm_audio_client_alloc((app_cb) q6_audio_cb, (void *)audio);

@@ -198,6 +198,35 @@ static void core_temp_notify(enum thermal_trip_type type,
 	complete(&sampling_completion);
 }
 
+unsigned int power_cost_at_freq_at_temp(
+	unsigned int cpu,
+	unsigned int freq,
+	long temp)
+{
+	struct cpu_activity_info *cpu_node = &activity[cpu];
+	int temp_point, i;
+
+	if (!cpu_node->sp->table || !cpu_node->sp->num_of_freqs)
+		return 0;
+
+	/* come out temp point at intervals */
+	if (temp < TEMP_BASE_POINT)
+		temp_point = 0;
+	else if (temp > TEMP_MAX_POINT)
+		temp_point = TEMP_DATA_POINTS - 1;
+	else
+		temp_point = (temp - TEMP_BASE_POINT) / 5;
+
+	/* locate temp. then come out cost at that temp. and freq. */
+	for (i = 0; i < cpu_node->sp->num_of_freqs; i++) {
+		if (cpu_node->sp->table[i].frequency >= freq)
+			return cpu_node->sp->power[temp_point][i];
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL(power_cost_at_freq_at_temp);
+
 static void repopulate_stats(int cpu)
 {
 	int i;
@@ -373,7 +402,7 @@ static int update_userspace_power(struct sched_params __user *argp)
 {
 	int i;
 	int ret;
-	int cpu;
+	int cpu = INT_MAX;
 	struct cpu_activity_info *node;
 	struct cpu_static_info *sp, *clear_sp;
 	int cpumask, cluster, mpidr;
@@ -428,8 +457,8 @@ static int update_userspace_power(struct sched_params __user *argp)
 	/* Copy the same power values for all the cpus in the cpumask
 	 * argp->cpumask within the cluster (argp->cluster)
 	 */
-	spin_lock(&update_lock);
 	get_user(cpumask, &argp->cpumask);
+	spin_lock(&update_lock);
 	for (i = 0; i < MAX_CORES_PER_CLUSTER; i++, cpumask >>= 1) {
 		if (!(cpumask & 0x01))
 			continue;
@@ -486,9 +515,9 @@ static long msm_core_ioctl(struct file *file, unsigned int cmd,
 		return -EINVAL;
 
 	get_user(cluster, &argp->cluster);
-	mpidr = (cluster << (MAX_CORES_PER_CLUSTER *
+	mpidr = (argp->cluster << (MAX_CORES_PER_CLUSTER *
 			MAX_NUM_OF_CLUSTERS));
-	get_user(cpumask, &argp->cpumask);
+	cpumask = argp->cpumask;
 
 	switch (cmd) {
 	case EA_LEAKAGE:
@@ -606,6 +635,12 @@ struct cpu_pwr_stats *get_cpu_pwr_stats(void)
 	return cpu_stats;
 }
 EXPORT_SYMBOL(get_cpu_pwr_stats);
+
+long get_cpu_temp(int cpu)
+{
+	return activity[cpu].temp;
+}
+EXPORT_SYMBOL(get_cpu_temp);
 
 static int msm_get_power_values(int cpu, struct cpu_static_info *sp)
 {

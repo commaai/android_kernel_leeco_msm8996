@@ -12,8 +12,6 @@ menuconfig INPUT_TOUCHSCREEN
 if INPUT_TOUCHSCREEN
 
 source "drivers/input/touchscreen/synaptics_dsx/Kconfig"
-source "drivers/input/touchscreen/synaptics_dsx_letv/Kconfig"
-source "drivers/input/touchscreen/hideep_letv/Kconfig"
 
 config OF_TOUCHSCREEN
 	def_tristate INPUT
@@ -118,18 +116,6 @@ config TOUCHSCREEN_ATMEL_MXT
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called atmel_mxt_ts.
-
-config TOUCHSCREEN_ATMEL_MXT_LETV
-	tristate "Atmel mXT I2C Touchscreen at letv platform"
-	depends on I2C
-	help
-	  Say Y here if you have Atmel mXT series I2C touchscreen,
-	  such as mXT640T, connected to your system.
-
-	  If unsure, say N.
-
-	  To compile this driver as a module, choose M here: the
-	  module will be called atmel_mxt_ts_letv.
 
 config TOUCHSCREEN_ATMEL_MAXTOUCH_TS
 	tristate "Atmel Maxtouch Touchscreen Family"
@@ -1117,14 +1103,6 @@ config TOUCHSCREEN_GT9XX
 
           If unsure, say N.
 
-config TOUCHSCREEN_FTS
-	bool "focaltech touchpanel"
-	depends on I2C
-	help
-		Say Y here if you have a Focaltech touchscreen.
-
-		If unsure, say N.
-
 config TOUCHSCREEN_MAXIM_STI
 	tristate "Maxim based STI touchscreens"
 	depends on SPI_MASTER
@@ -1137,16 +1115,17 @@ config TOUCHSCREEN_MAXIM_STI
 	  To compile this driver as a module, choose M here: the
 	  module will be called maxim_sti.
 
-config LETVS_CLASS
-       bool "letv class  for Mediatek package"
-       default n
-       help
-         Say Y here if you have letv class.
-
-         If unsure, say N.
-
-         To compile this dirver as a module, choose M here: the
-	 module will be called.
-
 source "drivers/input/touchscreen/gt9xx/Kconfig"
+
+config TOUCHSCREEN_SYNAPTICS_S1302_I2C_RMI
+	tristate "Synaptics s1302 i2c touchscreen"
+	depends on I2C
+	help
+	  This enables support for Synaptics s1302 RMI over I2C based touch key.
+
+config TOUCHSCREEN_SYNAPTICS_S3320_I2C_RMI
+	tristate "Synaptics s3320 i2c touchscreen"
+	depends on I2C
+	help
+	  This enables support for Synaptics s1302 RMI over I2C based touch key.
 endif

@@ -35,7 +35,7 @@
 #include <linux/ipa.h>
 #include <uapi/linux/net_map.h>
 
-#include "ipa_trace.h"
+#include <trace/ipa_trace.h>
 
 #define WWAN_METADATA_SHFT 24
 #define WWAN_METADATA_MASK 0xFF000000
@@ -2541,7 +2541,7 @@ int rmnet_ipa_query_tethering_stats(struct wan_ioctl_query_tether_stats *data,
 {
 	struct ipa_get_data_stats_req_msg_v01 *req;
 	struct ipa_get_data_stats_resp_msg_v01 *resp;
-	int pipe_len, rc;
+	int pipe_len, rc = -ENOMEM;
 
 	req = kzalloc(sizeof(struct ipa_get_data_stats_req_msg_v01),
 			GFP_KERNEL);

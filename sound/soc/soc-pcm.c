@@ -465,7 +465,6 @@ static int soc_pcm_open(struct snd_pcm_substream *substream)
 	const char *codec_dai_name = "multicodec";
 	int i, ret = 0;
 
-	/* Pinctrl is set from here */
 	pinctrl_pm_select_default_state(cpu_dai->dev);
 	for (i = 0; i < rtd->num_codecs; i++)
 		pinctrl_pm_select_default_state(rtd->codec_dais[i]->dev);
@@ -742,7 +741,7 @@ static int soc_pcm_prepare(struct snd_pcm_substream *substream)
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_soc_platform *platform = rtd->platform;
 	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
-	struct snd_soc_dai *codec_dai;
+	struct snd_soc_dai *codec_dai = NULL;
 	int i, ret = 0;
 
 	mutex_lock_nested(&rtd->pcm_mutex, rtd->pcm_subclass);
@@ -781,6 +780,12 @@ static int soc_pcm_prepare(struct snd_pcm_substream *substream)
 				goto out;
 			}
 		}
+	}
+
+	if (!codec_dai) {
+		dev_err(codec_dai->dev, "ASoC: DAI not found\n");
+		ret = -EINVAL;
+		goto out;
 	}
 
 	if (cpu_dai->driver->ops && cpu_dai->driver->ops->prepare) {

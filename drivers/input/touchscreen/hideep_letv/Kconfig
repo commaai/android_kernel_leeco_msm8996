@@ -1,6 +1,0 @@
-config TOUCHSCREEN_HIDEEP_TP_LETV
-	default M
-	tristate "Hideep Touchpannel for debug"
-	depends on I2C
-	---help---
-	  say Y to enable driver for hideep Touchpanel.

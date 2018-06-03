@@ -66,6 +66,8 @@ struct tfa98xx {
 	int has_drc;
 	int rate;
 	int rst_gpio;
+	struct work_struct stop_work;
+    int stop_ref;
 	struct tfaprofile *profiles;
 	struct tfa98xx_firmware fw;
 	u8 reg;

@@ -35,11 +35,7 @@
 #include <linux/string_helpers.h>
 #include <linux/alarmtimer.h>
 #include <linux/qpnp/qpnp-revid.h>
-
-#ifdef CONFIG_MACH_ZL1
-#include <linux/reboot.h>
-static int empty_cn = 0;
-#endif
+#include "oem_external_fg.h"
 
 /* Register offsets */
 
@@ -242,9 +238,9 @@ enum fg_mem_data_index {
 static struct fg_mem_setting settings[FG_MEM_SETTING_MAX] = {
 	/*       ID                    Address, Offset, Value*/
 	SETTING(SOFT_COLD,       0x454,   0,      100),
-	SETTING(SOFT_HOT,        0x454,   1,      450),
+	SETTING(SOFT_HOT,        0x454,   1,      400),
 	SETTING(HARD_COLD,       0x454,   2,      50),
-	SETTING(HARD_HOT,        0x454,   3,      550),
+	SETTING(HARD_HOT,        0x454,   3,      450),
 	SETTING(RESUME_SOC,      0x45C,   1,      0),
 	SETTING(BCL_LM_THRESHOLD, 0x47C,   2,      50),
 	SETTING(BCL_MH_THRESHOLD, 0x47C,   3,      752),
@@ -334,7 +330,7 @@ module_param_named(
 	battery_type, fg_batt_type, charp, S_IRUSR | S_IWUSR
 );
 
-static int fg_sram_update_period_ms = 10000;
+static int fg_sram_update_period_ms = 30000;
 module_param_named(
 	sram_update_period_ms, fg_sram_update_period_ms, int, S_IRUSR | S_IWUSR
 );
@@ -415,6 +411,21 @@ static struct register_offset offset[] = {
 #define MEM_INTF_WR_DATA0(chip) \
 		((chip)->mem_base + (chip)->offset[MEM_INTF_WR_DATA0])
 
+static struct external_battery_gauge *ext_fg;
+
+void external_battery_gauge_register(struct external_battery_gauge *batt_gauge)
+{
+	if (ext_fg)
+		pr_err("qpnp-charger %s multiple battery gauge called\n",
+								__func__);
+	ext_fg = batt_gauge;
+}
+
+void external_battery_gauge_unregister(struct external_battery_gauge *batt_gauge)
+{
+	ext_fg = NULL;
+}
+
 struct fg_wakeup_source {
 	struct wakeup_source	source;
 	unsigned long		enabled;
@@ -472,7 +483,6 @@ struct fg_chip {
 	struct fg_irq		mem_irq[FG_MEM_IF_IRQ_COUNT];
 	struct completion	sram_access_granted;
 	struct completion	sram_access_revoked;
-	struct completion	fg_sram_updating_done;
 	struct completion	batt_id_avail;
 	struct completion	first_soc_done;
 	struct power_supply	bms_psy;
@@ -572,6 +582,7 @@ struct fg_chip {
 	bool			batt_cold;
 	int			cold_hysteresis;
 	int			hot_hysteresis;
+	bool			battery_4p4v_present;
 	/* ESR pulse tuning */
 	struct fg_wakeup_source	esr_extract_wakeup_source;
 	struct work_struct	esr_extract_config_work;
@@ -627,6 +638,7 @@ static const mode_t DFS_MODE = S_IRUSR | S_IWUSR;
 static const char *default_batt_type	= "Unknown Battery";
 static const char *loading_batt_type	= "Loading Battery Data";
 static const char *missing_batt_type	= "Disconnected Battery";
+static const char *four_p_four_v_batt_type	= "itech_3400mAH";
 
 /* Log buffer */
 struct fg_log_buffer {
@@ -1933,11 +1945,7 @@ static void fg_handle_battery_insertion(struct fg_chip *chip)
 
 static int soc_to_setpoint(int soc)
 {
-	/* this function will expand delta soc
-	 * return DIV_ROUND_CLOSEST(soc * 255, 100);
-	 * return original delta soc
-	 */
-	return soc;
+	return DIV_ROUND_CLOSEST(soc * 255, 100);
 }
 
 static void batt_to_setpoint_adc(int vbatt_mv, u8 *data)
@@ -2147,7 +2155,7 @@ static int get_monotonic_soc_raw(struct fg_chip *chip)
 }
 
 #define EMPTY_CAPACITY		0
-#define DEFAULT_CAPACITY	-1	/* reported when profile load is not be finished. */
+#define DEFAULT_CAPACITY	50
 #define MISSING_CAPACITY	100
 #define FULL_CAPACITY		100
 #define FULL_SOC_RAW		0xFF
@@ -2598,26 +2606,6 @@ out:
 	fg_relax(&chip->sanity_wakeup_source);
 }
 
-/*
-  *function for read real-time vbat and ibat from register
-  */
-static int get_real_time_prop_value(struct fg_chip *chip, unsigned int type)
-{
-	int ret = -1;
-
-	cancel_delayed_work(&chip->update_sram_data);
-	reinit_completion(&chip->fg_sram_updating_done);
-	schedule_delayed_work(&chip->update_sram_data,
-		msecs_to_jiffies(0));
-
-	/*make sure we got the latest updated data. and make sure never hold the process too long.*/
-	ret = wait_for_completion_timeout(//never interruptable
-		&chip->fg_sram_updating_done,
-		msecs_to_jiffies(10));
-
-	return fg_data[type].value;
-}
-
 #define SRAM_TIMEOUT_MS			3000
 static void update_sram_data_work(struct work_struct *work)
 {
@@ -2644,7 +2632,6 @@ wait:
 	}
 	rc = update_sram_data(chip, &resched_ms);
 
-	complete(&chip->fg_sram_updating_done); // inform the real time handler, data updating got done.
 out:
 	if (!rc)
 		schedule_delayed_work(
@@ -3134,9 +3121,7 @@ static int estimate_battery_age(struct fg_chip *chip, int *actual_capacity)
 	}
 
 	battery_soc = get_battery_soc_raw(chip) * 100 / FULL_PERCENT_3B;
-	if (rc) {
-		goto error_done;
-	} else if (battery_soc < 25 || battery_soc > 75) {
+	if (battery_soc < 25 || battery_soc > 75) {
 		if (fg_debug_mask & FG_AGING)
 			pr_info("Battery SoC (%d) out of range, aborting\n",
 					(int)battery_soc);
@@ -3260,11 +3245,16 @@ static int fg_power_get_property(struct power_supply *psy,
 			val->strval = missing_batt_type;
 		else if (chip->fg_restarting)
 			val->strval = loading_batt_type;
+		else if (chip->battery_4p4v_present)
+			val->strval = four_p_four_v_batt_type;
 		else
 			val->strval = chip->batt_type;
 		break;
 	case POWER_SUPPLY_PROP_CAPACITY:
-		val->intval = get_prop_capacity(chip);
+		if (ext_fg && ext_fg->get_battery_soc)
+			val->intval = ext_fg->get_battery_soc();
+		else
+			val->intval = get_prop_capacity(chip);
 		break;
 	case POWER_SUPPLY_PROP_CAPACITY_RAW:
 		val->intval = get_sram_prop_now(chip, FG_DATA_BATT_SOC);
@@ -3273,10 +3263,16 @@ static int fg_power_get_property(struct power_supply *psy,
 		val->intval = get_sram_prop_now(chip, FG_DATA_VINT_ERR);
 		break;
 	case POWER_SUPPLY_PROP_CURRENT_NOW:
-		val->intval = get_real_time_prop_value(chip, FG_DATA_CURRENT);
+		if (ext_fg && ext_fg->get_average_current)
+			val->intval = ext_fg->get_average_current();
+		else
+			val->intval = get_sram_prop_now(chip, FG_DATA_CURRENT);
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
-		val->intval = get_real_time_prop_value(chip, FG_DATA_VOLTAGE);
+		if (ext_fg && ext_fg->get_battery_mvolts)
+			val->intval = ext_fg->get_battery_mvolts();
+		else
+			val->intval = get_sram_prop_now(chip, FG_DATA_VOLTAGE);
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_OCV:
 		val->intval = get_sram_prop_now(chip, FG_DATA_OCV);
@@ -3285,7 +3281,10 @@ static int fg_power_get_property(struct power_supply *psy,
 		val->intval = chip->batt_max_voltage_uv;
 		break;
 	case POWER_SUPPLY_PROP_TEMP:
-		val->intval = get_sram_prop_now(chip, FG_DATA_BATT_TEMP);
+		if (ext_fg && ext_fg->get_battery_temperature)
+			val->intval = ext_fg->get_battery_temperature();
+		else
+			val->intval = get_sram_prop_now(chip, FG_DATA_BATT_TEMP);
 		break;
 	case POWER_SUPPLY_PROP_COOL_TEMP:
 		val->intval = get_prop_jeita_temp(chip, FG_MEM_SOFT_COLD);
@@ -4257,6 +4256,9 @@ static int fg_init_batt_temp_state(struct fg_chip *chip)
 	return rc;
 }
 
+static void oem_update_cc_cv_setpoint(struct fg_chip *chip, int cv_float_point);
+
+
 static int fg_power_set_property(struct power_supply *psy,
 				  enum power_supply_property psp,
 				  const union power_supply_propval *val)
@@ -4290,6 +4292,20 @@ static int fg_power_set_property(struct power_supply *psy,
 
 		if (chip->jeita_hysteresis_support)
 			fg_hysteresis_config(chip);
+		break;
+	case POWER_SUPPLY_PROP_CC_TO_CV_POINT:
+		oem_update_cc_cv_setpoint(chip, val->intval);
+		break;
+	case POWER_SUPPLY_PROP_SET_ALLOW_READ_EXTERN_FG_IIC:
+		if (ext_fg && ext_fg->set_alow_reading)
+			ext_fg->set_alow_reading(val->intval);
+		break;
+	case POWER_SUPPLY_PROP_UPDATE_LCD_IS_OFF:
+		if (ext_fg && ext_fg->set_lcd_off_status)
+			ext_fg->set_lcd_off_status(val->intval);
+		break;
+	case POWER_SUPPLY_PROP_BATTERY_4P4V_PRESENT:
+		chip->battery_4p4v_present = val->intval;
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_DONE:
 		chip->charge_done = val->intval;
@@ -5233,6 +5249,25 @@ static void update_cc_cv_setpoint(struct fg_chip *chip)
 			tmp[0], tmp[1], CC_CV_SETPOINT_REG);
 }
 
+static void oem_update_cc_cv_setpoint(struct fg_chip *chip, int cv_float_point)
+{
+	int rc;
+	u8 tmp[2];
+
+	if (!cv_float_point)
+		return;
+	batt_to_setpoint_adc(cv_float_point, tmp);
+	rc = fg_mem_write(chip, tmp, CC_CV_SETPOINT_REG, 2,
+				CC_CV_SETPOINT_OFFSET, 0);
+	if (rc) {
+		pr_err("failed to write CC_CV_VOLT rc=%d\n", rc);
+		return;
+	}
+	if (fg_debug_mask & FG_STATUS)
+		pr_info("oem Wrote %x %x to address %x for CC_CV setpoint\n",
+			tmp[0], tmp[1], CC_CV_SETPOINT_REG);
+}
+
 #define CBITS_INPUT_FILTER_REG		0x4B4
 #define CBITS_RMEAS1_OFFSET		1
 #define CBITS_RMEAS2_OFFSET		2
@@ -6026,24 +6061,6 @@ static void check_empty_work(struct work_struct *work)
 		if (chip->power_supply_registered)
 			power_supply_changed(&chip->bms_psy);
 	}
-
-#ifdef CONFIG_MACH_ZL1
-	/*
-	 * 1.5s *40 ~ 60 s, shutdown device now
-	 */
-	if(empty_cn > 40) {
-		pr_err("low Voltage ,force shutdown now\n");
-		orderly_poweroff(true);
-	}
-
-	if(chip->soc_empty) {
-		empty_cn ++;
-		schedule_delayed_work(&chip->check_empty_work,
-			msecs_to_jiffies(FG_EMPTY_DEBOUNCE_MS));
-	}else {
-		empty_cn = 0;
-	}
-#endif
 
 out:
 	fg_relax(&chip->empty_check_wakeup_source);
@@ -7169,77 +7186,6 @@ static const struct file_operations fg_memif_dfs_reg_fops = {
 	.write		= fg_memif_dfs_reg_write,
 };
 
-#define ADDR_OF_FG_REGS_START	0x400
-#define COUNT_OF_ALL_FG_REGS	0x200
-static int fg_regs_open(struct inode *inode, struct file *file)
-{
-	struct fg_log_buffer *log;
-	struct fg_trans *trans;
-	u8 *data_buf;
-
-	size_t logbufsize = SZ_4K;
-	size_t databufsize = SZ_4K;
-
-	if (!dbgfs_data.chip) {
-		pr_err("Not initialized data\n");
-		return -EINVAL;
-	}
-
-	/* Per file "transaction" data */
-	trans = kzalloc(sizeof(*trans), GFP_KERNEL);
-	if (!trans) {
-		pr_err("Unable to allocate memory for transaction data\n");
-		return -ENOMEM;
-	}
-
-	/* Allocate log buffer */
-	log = kzalloc(logbufsize, GFP_KERNEL);
-
-	if (!log) {
-		kfree(trans);
-		pr_err("Unable to allocate memory for log buffer\n");
-		return -ENOMEM;
-	}
-
-	log->rpos = 0;
-	log->wpos = 0;
-	log->len = logbufsize - sizeof(*log);
-
-	/* Allocate data buffer */
-	data_buf = kzalloc(databufsize, GFP_KERNEL);
-
-	if (!data_buf) {
-		kfree(trans);
-		kfree(log);
-		pr_err("Unable to allocate memory for data buffer\n");
-		return -ENOMEM;
-	}
-
-	trans->log		= log;
-	trans->data		= data_buf;
-	trans->cnt		= COUNT_OF_ALL_FG_REGS;
-	trans->addr		= ADDR_OF_FG_REGS_START;
-	trans->chip		= dbgfs_data.chip;
-	trans->offset	= trans->addr;
-
-	file->private_data = trans;
-	return 0;
-}
-
-static ssize_t fg_regs_write(struct file *file, const char __user *buf,
-			size_t count, loff_t *ppos)
-{
-	/* To be Done */
-	return 0;
-}
-
-static const struct file_operations fg_regs_sys_ops = {
-	.open		= fg_regs_open,
-	.release	= fg_memif_dfs_close,
-	.read		= fg_memif_dfs_reg_read,
-	.write		= fg_regs_write,
-};
-
 /**
  * fg_dfs_create_fs: create debugfs file system.
  * @return pointer to root directory or NULL if failed to create fs
@@ -7326,14 +7272,6 @@ int fg_dfs_create(struct fg_chip *chip)
 							&fg_memif_dfs_reg_fops);
 	if (!file) {
 		pr_err("error creating 'data' entry\n");
-		goto err_remove_fs;
-	}
-
-	/* create interface for dump all fg_regs. */
-	file = debugfs_create_file("fg_regs", S_IRUGO | S_IWUSR, root, chip,
-							&fg_regs_sys_ops);
-	if (!file) {
-		pr_err("error creating 'fg_regs' entry\n");
 		goto err_remove_fs;
 	}
 
@@ -7978,7 +7916,8 @@ static int fg_setup_memif_offset(struct fg_chip *chip)
 		return rc;
 	}
 
-	switch (chip->revision[DIG_MAJOR]) {
+	dig_major = chip->revision[DIG_MAJOR];
+	switch (dig_major) {
 	case DIG_REV_1:
 	case DIG_REV_2:
 		chip->offset = offset[0].address;
@@ -8206,7 +8145,6 @@ static int fg_probe(struct spmi_device *spmi)
 			fg_cap_learning_alarm_cb);
 	init_completion(&chip->sram_access_granted);
 	init_completion(&chip->sram_access_revoked);
-	init_completion(&chip->fg_sram_updating_done);
 	complete_all(&chip->sram_access_revoked);
 	init_completion(&chip->batt_id_avail);
 	init_completion(&chip->first_soc_done);
@@ -8334,13 +8272,15 @@ static int fg_probe(struct spmi_device *spmi)
 	 */
 	chip->batt_psy_name = "battery";
 
+#ifdef CONFIG_DEBUG_FS
 	if (chip->mem_base) {
 		rc = fg_dfs_create(chip);
 		if (rc < 0) {
 			pr_err("failed to create debugfs rc = %d\n", rc);
-			goto power_supply_unregister;
+			rc = 0;
 		}
 	}
+#endif
 
 	/* Fake temperature till the actual temperature is read */
 	chip->last_good_temp = 250;
@@ -8353,8 +8293,6 @@ static int fg_probe(struct spmi_device *spmi)
 
 	return rc;
 
-power_supply_unregister:
-	power_supply_unregister(&chip->bms_psy);
 cancel_work:
 	fg_cancel_all_works(chip);
 of_init_fail:

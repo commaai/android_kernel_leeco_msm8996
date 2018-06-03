@@ -1,77 +1,3 @@
-ifeq ($(CONFIG_MACH_LEECO_MSM8996),y)
-    ifeq ($(CONFIG_MACH_MAX_PLUS),y)
-dtb-$(CONFIG_ARCH_MSM8996) += msm8996-v2-pmi8994-max_plus-dvt1.dtb \
-	msm8996-v2-pmi8994-max_plus-dvt1.1.dtb \
-	msm8996-v3-pmi8994-max_plus-dvt1.dtb \
-	msm8996-v3-pmi8994-max_plus-dvt1.1.dtb \
-	msm8996-v3-pmi8994-max_plus-dvt3.dtb \
-	msm8996-v3-pmi8994-max_plus-pvt.dtb \
-	msm8996-v3-pmi8996-max_plus-dvt1.1.dtb \
-	msm8996-v3-pmi8996-max_plus-dvt3.dtb \
-	msm8996-v3-pmi8996-max_plus-pvt.dtb \
-	msm8996-v3-pmi8994-max_plus-dvt1.1.11.ad.dtb
-    endif
-    ifeq ($(CONFIG_MACH_X10),y)
-dtb-$(CONFIG_ARCH_MSM8996) += msm8996pro-pmi8996-le_x10-evt.dtb
-    endif
-    ifeq ($(CONFIG_MACH_X2),y)
-dtb-$(CONFIG_ARCH_MSM8996) += msm8996-v2-pmi8994-le_x2-evt.dtb \
-	msm8996-v2-pmi8994-le_x2-dvt1.dtb \
-	msm8996-v3-pmi8994-le_x2-evt.dtb \
-	msm8996-v3-pmi8994-le_x2-dvt1.dtb \
-	msm8996-v3-pmi8994-le_x2-dvt1.1.dtb \
-	msm8996-v3-pmi8996-le_x2-evt.dtb \
-	msm8996-v3-pmi8996-le_x2-dvt1.dtb \
-	msm8996-v3-pmi8996-le_x2-dvt1.1.dtb \
-	msm8996-v3-pmi8994-le_x2_na-evt.dtb \
-	msm8996-v3-pmi8994-le_x2_na-dvt1.dtb \
-	msm8996-v3-pmi8996-le_x2_na-evt.dtb \
-	msm8996-v3-pmi8996-le_x2_na-dvt1.dtb \
-	msm8996-v3-pmi8994-le_x2-dvt2.dtb \
-	msm8996-v3-pmi8996-le_x2-dvt2.dtb \
-	msm8996-v3-pmi8994-le_x2_na-dvt1.1.dtb \
-	msm8996-v3-pmi8996-le_x2_na-dvt1.1.dtb \
-	msm8996-v3-pmi8994-le_x2-pvt.dtb \
-	msm8996-v3-pmi8996-le_x2-pvt.dtb \
-	msm8996-v3-pmi8994-le_x2_na-dvt2.dtb \
-	msm8996-v3-pmi8996-le_x2_na-dvt2.dtb \
-	msm8996-v3-pmi8996-le_x2_na-pvt.dtb \
-	msm8996-v3-pmi8994-le_x2_na-pvt.dtb \
-	msm8996pro-v3-pmi8996-le_x2-pvt.dtb
-    endif
-    ifeq ($(CONFIG_MACH_X5),y)
-dtb-$(CONFIG_ARCH_MSM8996) += msm8996-v3-pmi8994-le_x5-evt.dtb \
-	msm8996-v3-pmi8994-le_x5-dvt1.dtb \
-	msm8996-v3-pmi8996-le_x5-evt.dtb \
-	msm8996-v3-pmi8996-le_x5-dvt1.dtb \
-	msm8996-v3-pmi8996-le_x5-dvt2.dtb \
-	msm8996-v3-pmi8994-le_x5-dvt2.dtb \
-	msm8996pro-pmi8996-le_x5-dvt1.dtb \
-	msm8996pro-pmi8996-le_x5-dvt2.dtb \
-	msm8996-v3-pmi8996-le_x5-dvt2.1.dtb \
-	msm8996-v3-pmi8994-le_x5-dvt2.1.dtb \
-	msm8996pro-pmi8996-le_x5-dvt2.1.dtb
-    endif
-    ifeq ($(CONFIG_MACH_X51),y)
-dtb-$(CONFIG_ARCH_MSM8996) += msm8996-v3-pmi8996-le_x51-dvt1.dtb \
-	msm8996-v3-pmi8996-le_x51-dvt2.dtb \
-	msm8996pro-pmi8996-le_x51-dvt1.dtb \
-	msm8996pro-pmi8996-le_x51-dvt2.dtb
-    endif
-    ifeq ($(CONFIG_MACH_TURBO),y)
-dtb-$(CONFIG_ARCH_MSM8996) += msm8996pro-pmi8996-le_turbo-evt.dtb \
-	msm8996pro-pmi8996-le_turbo-dvt1.dtb \
-	msm8996pro-pmi8996-le_turbo_ww-evt.dtb \
-	msm8996pro-pmi8996-le_turbo_ww-dvt1.dtb
-    endif
-    ifeq ($(CONFIG_MACH_ZL1),y)
-dtb-$(CONFIG_ARCH_MSM8996) += msm8996-v3-pmi8996-le_zl1-evt.dtb \
-	msm8996-v3-pmi8996-le_zl1-dvt1.dtb \
-	msm8996pro-pmi8996-le_zl1-dvt1.dtb \
-	msm8996pro-pmi8996-le_zl1-na.dtb \
-	msm8996pro-pmi8996-le_zl1-pvt.dtb
-    endif
-else
 dtb-$(CONFIG_ARCH_MSM8996) += msm8996-v2-pmi8994-cdp.dtb \
 	msm8996-v2-pmi8994-mtp.dtb \
 	msm8996-v2-pmi8994-pmk8001-cdp.dtb \
@@ -175,7 +101,6 @@ dtb-$(CONFIG_ARCH_MSM8996) += msm8996-v2-pmi8994-cdp.dtb \
 	apq8096-v3-pmi8996-mdm9x55-i2s-mtp.dtb \
 	apq8096-v3-pmi8996-mdm9x55-slimbus-mtp.dtb \
 	apq8096-v3-pmi8996-dragonboard.dtb
-endif
 
 dtb-$(CONFIG_ARCH_MSMCOBALT) += msmcobalt-sim.dtb \
 	msmcobalt-rumi.dtb
@@ -248,6 +173,9 @@ dtb-$(CONFIG_ARCH_MSM8916) += msm8952-qrd-skum.dtb \
 dtb-$(CONFIG_ARCH_MSM8909) += msm8909-pm8916-mtp.dtb \
 	msm8909w-wtp.dtb \
 	apq8009w-wtp.dtb
+
+dtb-$(CONFIG_MACH_MSM8996_15801) := msm8996-v3.0-pmi8996-mtp_15801.dtb \
+	msm8996pro-pmi8996-mtp_15811.dtb
 
 ifeq ($(CONFIG_ARM64),y)
 always          := $(dtb-y)
