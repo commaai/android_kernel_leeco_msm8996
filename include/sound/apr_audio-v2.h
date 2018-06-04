@@ -3237,6 +3237,8 @@ struct asm_softvolume_params {
 
 #define ASM_MEDIA_FMT_MULTI_CHANNEL_PCM_V2 0x00010DA5
 
+#define ASM_MEDIA_FMT_MULTI_CHANNEL_PCM_V3 0x00010DDC
+
 #define ASM_MEDIA_FMT_EVRCB_FS 0x00010BEF
 
 #define ASM_MEDIA_FMT_EVRCWB_FS 0x00010BF0
@@ -3304,6 +3306,51 @@ struct asm_multi_channel_pcm_fmt_blk_v2 {
  */
 } __packed;
 
+struct asm_multi_channel_pcm_fmt_blk_v3 {
+	uint16_t                num_channels;
+/*
+ * Number of channels
+ * Supported values: 1 to 8
+ */
+
+	uint16_t                bits_per_sample;
+/*
+ * Number of bits per sample per channel
+ * Supported values: 16, 24
+ */
+
+	uint32_t                sample_rate;
+/*
+ * Number of samples per second
+ * Supported values: 2000 to 48000, 96000,192000 Hz
+ */
+
+	uint16_t                is_signed;
+/* Flag that indicates that PCM samples are signed (1) */
+
+	uint16_t                sample_word_size;
+/*
+ * Size in bits of the word that holds a sample of a channel.
+ * Supported values: 12,24,32
+ */
+
+	uint8_t                 channel_mapping[8];
+/*
+ * Each element, i, in the array describes channel i inside the buffer where
+ * 0 <= i < num_channels. Unused channels are set to 0.
+ */
+} __packed;
+
+/*
+ * Payload of the multichannel PCM configuration parameters in
+ * the ASM_MEDIA_FMT_MULTI_CHANNEL_PCM_V3 media format.
+ */
+struct asm_multi_channel_pcm_fmt_blk_param_v3 {
+	struct apr_hdr hdr;
+	struct asm_data_cmd_media_fmt_update_v2 fmt_blk;
+	struct asm_multi_channel_pcm_fmt_blk_v3 param;
+} __packed;
+
 struct asm_stream_cmd_set_encdec_param {
 	u32                  param_id;
 	/* ID of the parameter. */
@@ -3338,6 +3385,66 @@ struct asm_dec_ddp_endp_param_v2 {
 	struct asm_stream_cmd_set_encdec_param  encdec;
 	int endp_param_value;
 } __packed;
+
+
+/*
+ * Payload of the multichannel PCM encoder configuration parameters in
+ * the ASM_MEDIA_FMT_MULTI_CHANNEL_PCM_V3 media format.
+ */
+
+struct asm_multi_channel_pcm_enc_cfg_v3 {
+	struct apr_hdr hdr;
+	struct asm_stream_cmd_set_encdec_param encdec;
+	struct asm_enc_cfg_blk_param_v2 encblk;
+	uint16_t num_channels;
+	/*
+	 * Number of PCM channels.
+	 * @values
+	 * - 0 -- Native mode
+	 * - 1 -- 8 channels
+	 * Native mode indicates that encoding must be performed with the number
+	 * of channels at the input.
+	 */
+	uint16_t  bits_per_sample;
+	/*
+	 * Number of bits per sample per channel.
+	 * @values 16, 24
+	 */
+	uint32_t  sample_rate;
+	/*
+	 * Number of samples per second.
+	 * @values 0, 8000 to 48000 Hz
+	 * A value of 0 indicates the native sampling rate. Encoding is
+	 * performed at the input sampling rate.
+	 */
+	uint16_t  is_signed;
+	/*
+	 * Flag that indicates the PCM samples are signed (1). Currently, only
+	 * signed PCM samples are supported.
+	 */
+	uint16_t    sample_word_size;
+	/*
+	 * The size in bits of the word that holds a sample of a channel.
+	 * @values 16, 24, 32
+	 * 16-bit samples are always placed in 16-bit words:
+	 * sample_word_size = 1.
+	 * 24-bit samples can be placed in 32-bit words or in consecutive
+	 * 24-bit words.
+	 * - If sample_word_size = 32, 24-bit samples are placed in the
+	 * most significant 24 bits of a 32-bit word.
+	 * - If sample_word_size = 24, 24-bit samples are placed in
+	 * 24-bit words. @tablebulletend
+	 */
+	uint8_t   channel_mapping[8];
+	/*
+	 * Channel mapping array expected at the encoder output.
+	 *  Channel[i] mapping describes channel i inside the buffer, where
+	 *  0 @le i < num_channels. All valid used channels must be present at
+	 *  the beginning of the array.
+	 * If Native mode is set for the channels, this field is ignored.
+	 * @values See Section @xref{dox:PcmChannelDefs}
+	 */
+};
 
 /* @brief Multichannel PCM encoder configuration structure used
  * in the #ASM_PARAM_ID_ENCDEC_ENC_CFG_BLK_V2 command.
@@ -4772,6 +4879,77 @@ struct asm_stream_cmd_open_write_v3 {
  * - #ASM_MEDIA_FMT_APE
  * - #ASM_MEDIA_FMT_EXAMPLE
  */
+} __packed;
+
+#define ASM_STREAM_CMD_OPEN_PULL_MODE_WRITE    0x00010DD9
+
+/* Bitmask for the stream_perf_mode subfield. */
+#define ASM_BIT_MASK_STREAM_PERF_FLAG_PULL_MODE_WRITE 0xE0000000UL
+
+/* Bitmask for the stream_perf_mode subfield. */
+#define ASM_SHIFT_STREAM_PERF_FLAG_PULL_MODE_WRITE 29
+
+#define ASM_STREAM_CMD_OPEN_PUSH_MODE_READ  0x00010DDA
+
+#define ASM_BIT_MASK_STREAM_PERF_FLAG_PUSH_MODE_READ 0xE0000000UL
+
+#define ASM_SHIFT_STREAM_PERF_FLAG_PUSH_MODE_READ 29
+
+#define ASM_DATA_EVENT_WATERMARK 0x00010DDB
+
+struct asm_shared_position_buffer {
+	volatile uint32_t               frame_counter;
+/* Counter used to handle interprocessor synchronization issues.
+ * When frame_counter is 0: read_index, wall_clock_us_lsw, and
+ * wall_clock_us_msw are invalid.
+ * Supported values: >= 0.
+ */
+
+	volatile uint32_t               index;
+/* Index in bytes from where the aDSP is reading/writing.
+ * Supported values: 0 to circular buffer size - 1
+ */
+
+	volatile uint32_t               wall_clock_us_lsw;
+/* Lower 32 bits of the 64-bit wall clock time in microseconds when the
+ * read index was updated.
+ * Supported values: >= 0
+ */
+
+	volatile uint32_t               wall_clock_us_msw;
+/* Upper 32 bits of the 64 bit wall clock time in microseconds when the
+ * read index was updated
+ * Supported values: >= 0
+ */
+} __packed;
+
+struct asm_shared_watermark_level {
+	uint32_t                watermark_level_bytes;
+} __packed;
+
+struct asm_stream_cmd_open_shared_io {
+	struct apr_hdr          hdr;
+	uint32_t                mode_flags;
+	uint16_t                endpoint_type;
+	uint16_t                topo_bits_per_sample;
+	uint32_t                topo_id;
+	uint32_t                fmt_id;
+	uint32_t                shared_pos_buf_phy_addr_lsw;
+	uint32_t                shared_pos_buf_phy_addr_msw;
+	uint16_t                shared_pos_buf_mem_pool_id;
+	uint16_t                shared_pos_buf_num_regions;
+	uint32_t                shared_pos_buf_property_flag;
+	uint32_t                shared_circ_buf_start_phy_addr_lsw;
+	uint32_t                shared_circ_buf_start_phy_addr_msw;
+	uint32_t                shared_circ_buf_size;
+	uint16_t                shared_circ_buf_mem_pool_id;
+	uint16_t                shared_circ_buf_num_regions;
+	uint32_t                shared_circ_buf_property_flag;
+	uint32_t                num_watermark_levels;
+	struct asm_multi_channel_pcm_fmt_blk_v3         fmt;
+	struct avs_shared_map_region_payload            map_region_pos_buf;
+	struct avs_shared_map_region_payload            map_region_circ_buf;
+	struct asm_shared_watermark_level watermark[0];
 } __packed;
 
 #define ASM_STREAM_CMD_OPEN_READ_V3                 0x00010DB4
@@ -7701,31 +7879,6 @@ struct afe_spkr_prot_calib_get_resp {
 	struct asm_calib_res_cfg res_cfg;
 } __packed;
 
-#ifdef CONFIG_SND_SOC_MAX98927
-#define AFE_RX_TOPOLOGY_ID_DSM                              0x10001060
-#define AFE_MODULE_DSM_TX                                   0x10001061
-#define AFE_MODULE_DSM_RX                                   0x10001062
-#define AFE_PARAM_ID_DSM_CFG                                0x10001066
-#define AFE_PARAM_ID_DSM_ENABLE                             0x10001068
-#define AFE_DSM_RX_PORT_ID                                  AFE_PORT_ID_TERTIARY_MI2S_RX
-
-struct afe_dsm_set_header {
-	struct apr_hdr hdr;
-	struct afe_port_cmd_set_param_v2 set_param;
-	struct afe_port_param_data_v2 pdata;
-} __packed;
-
-struct afe_dsm_get_header {
-	struct apr_hdr hdr;
-	struct afe_port_cmd_get_param_v2 get_param;
-	struct afe_port_param_data_v2 pdata;
-} __packed;
-
-struct afe_dsm_resp_header {
-	uint32_t status;
-	struct afe_port_param_data_v2 pdata;
-} __packed;
-#endif
 
 /* SRS TRUMEDIA start */
 /* topology */
@@ -8061,10 +8214,10 @@ struct afe_param_id_clip_bank_sel {
 #define Q6AFE_LPASS_IBIT_CLK_6_P144_MHZ		0x5DC000
 #define Q6AFE_LPASS_IBIT_CLK_4_P096_MHZ		0x3E8000
 #define Q6AFE_LPASS_IBIT_CLK_3_P072_MHZ		0x2EE000
-#define Q6AFE_LPASS_IBIT_CLK_2_P822_MHZ		0x2b1100
+#define Q6AFE_LPASS_IBIT_CLK_2_P8224_MHZ		0x2b1100
 #define Q6AFE_LPASS_IBIT_CLK_2_P048_MHZ		0x1F4000
 #define Q6AFE_LPASS_IBIT_CLK_1_P536_MHZ		0x177000
-#define Q6AFE_LPASS_IBIT_CLK_1_P411_MHZ		0x158880
+#define Q6AFE_LPASS_IBIT_CLK_1_P4112_MHZ		0x158880
 #define Q6AFE_LPASS_IBIT_CLK_1_P024_MHZ		 0xFA000
 #define Q6AFE_LPASS_IBIT_CLK_768_KHZ		 0xBB800
 #define Q6AFE_LPASS_IBIT_CLK_512_KHZ		 0x7D000
@@ -8226,7 +8379,7 @@ struct afe_clk_set {
 	 * for enable and disable clock.
 	 *	"clk_freq_in_hz", "clk_attri", and "clk_root"
 	 *	are ignored in disable clock case.
-	 *	@values\A0
+	 *	@values 
 	 *	- 0 -- Disabled
 	 *	- 1 -- Enabled  @tablebulletend
 	 */

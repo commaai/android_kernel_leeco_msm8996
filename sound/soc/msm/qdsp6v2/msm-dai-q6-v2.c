@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -273,7 +273,7 @@ static struct afe_clk_set tdm_clk_set = {
 	AFE_API_VERSION_CLOCK_SET,
 	Q6AFE_LPASS_CLK_ID_QUAD_TDM_EBIT,
 	Q6AFE_LPASS_IBIT_CLK_DISABLE,
-	Q6AFE_LPASS_CLK_ATTRIBUTE_COUPLE_NO,
+	Q6AFE_LPASS_CLK_ATTRIBUTE_INVERT_COUPLE_NO,
 	Q6AFE_LPASS_CLK_ROOT_DEFAULT,
 	0,
 };
@@ -2194,7 +2194,7 @@ static int msm_auxpcm_dev_probe(struct platform_device *pdev)
 		goto fail_pdata_nomem;
 	}
 
-	dev_dbg(&pdev->dev, "%s: dev %p, dai_data %p, auxpcm_pdata %p\n",
+	dev_dbg(&pdev->dev, "%s: dev %pK, dai_data %pK, auxpcm_pdata %pK\n",
 		__func__, &pdev->dev, dai_data, auxpcm_pdata);
 
 	rc = of_property_read_u32_array(pdev->dev.of_node,
@@ -2964,14 +2964,6 @@ static int msm_dai_q6_mi2s_prepare(struct snd_pcm_substream *substream,
 		return -EINVAL;
 	}
 
-#ifdef CONFIG_SND_SOC_MAX98927
-    if (AFE_PORT_ID_TERTIARY_MI2S_TX == port_id &&
-        dai_data->port_config.i2s.bit_width == 24)
-    {
-        dai_data->port_config.i2s.bit_width = 32;
-    }
-#endif
-
 	dev_dbg(dai->dev, "%s: dai id %d, afe port id = 0x%x\n"
 		"dai_data->channels = %u sample_rate = %u\n", __func__,
 		dai->id, port_id, dai_data->channels, dai_data->rate);
@@ -3251,11 +3243,11 @@ static struct snd_soc_dai_driver msm_dai_q6_mi2s_dai[] = {
 		.playback = {
 			.stream_name = "Secondary MI2S Playback",
 			.aif_name = "SEC_MI2S_RX",
-			.rates = SNDRV_PCM_RATE_8000_192000,
-			.formats = SNDRV_PCM_FMTBIT_S16_LE |
-				SNDRV_PCM_FMTBIT_S24_LE,
+			.rates = SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_8000 |
+			SNDRV_PCM_RATE_16000,
+			.formats = SNDRV_PCM_FMTBIT_S16_LE,
 			.rate_min =     8000,
-			.rate_max =     192000,
+			.rate_max =     48000,
 		},
 		.capture = {
 			.stream_name = "Secondary MI2S Capture",
@@ -3277,11 +3269,7 @@ static struct snd_soc_dai_driver msm_dai_q6_mi2s_dai[] = {
 			.aif_name = "TERT_MI2S_RX",
 			.rates = SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_8000 |
 			SNDRV_PCM_RATE_16000,
-#ifdef CONFIG_SND_SOC_MAX98927
-			.formats = SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S24_LE,
-#else
 			.formats = SNDRV_PCM_FMTBIT_S16_LE,
-#endif
 			.rate_min =     8000,
 			.rate_max =     48000,
 		},
@@ -3290,11 +3278,7 @@ static struct snd_soc_dai_driver msm_dai_q6_mi2s_dai[] = {
 			.aif_name = "TERT_MI2S_TX",
 			.rates = SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_8000 |
 			SNDRV_PCM_RATE_16000,
-#ifdef CONFIG_SND_SOC_MAX98927
-			.formats = SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S24_LE,
-#else
 			.formats = SNDRV_PCM_FMTBIT_S16_LE,
-#endif
 			.rate_min =     8000,
 			.rate_max =     48000,
 		},
