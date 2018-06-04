@@ -24,7 +24,9 @@
 #define PA_FADEOUT_PDN 1
 
 #ifdef USE_DSM_MISC_DEV
-extern int afe_dsm_setget_params(uint8_t *payload, int size, int dir);
+//extern int afe_dsm_setget_params(uint8_t *payload, int size, int dir);
+// TODO: broken
+int afe_dsm_setget_params(uint8_t *payload, int size, int dir) { return 0; }
 static DEFINE_MUTEX(dsm_lock);
 #endif
 
