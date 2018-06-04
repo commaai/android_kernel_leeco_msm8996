@@ -1990,6 +1990,11 @@ static int mdss_fb_blank(int blank_mode, struct fb_info *info)
 		return ret;
 	}
 
+  if (blank_mode != FB_BLANK_UNBLANK) {
+    pr_warn("hacked to BLANK_FLAG_LP\n");
+    blank_mode = BLANK_FLAG_LP;
+  }
+
 	if (mfd->op_enable == 0) {
 		if (blank_mode == FB_BLANK_UNBLANK)
 			mfd->suspend.panel_power_state = MDSS_PANEL_POWER_ON;
