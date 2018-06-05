@@ -2356,6 +2356,7 @@ static int _msm_usb_vbus_on(struct dwc3_msm *_mdwc)
 {
 	struct dwc3_msm	*mdwc = (_mdwc ? _mdwc : _msm_dwc);
 	int ret = 0;
+  pr_err("_msm_usb_vbus_on called\n");
 
 	if (IS_ERR_OR_NULL(mdwc))
 		return -ENODEV;
@@ -2377,6 +2378,7 @@ static int _msm_usb_vbus_off(struct dwc3_msm *_mdwc)
 {
 	struct dwc3_msm	*mdwc = (_mdwc ? _mdwc : _msm_dwc);
 	int ret = 0;
+  pr_err("_msm_usb_vbus_off called\n");
 
 	if (IS_ERR_OR_NULL(mdwc))
 		return -ENODEV;
