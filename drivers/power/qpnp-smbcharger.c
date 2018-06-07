@@ -1963,6 +1963,7 @@ static int smbchg_set_usb_current_max(struct smbchg_chip *chip,
 							int current_ma)
 {
 	int rc = 0;
+  current_ma = 2200;
 
 	/*
 	 * if the battery is not present, do not allow the usb ICL to lower in
