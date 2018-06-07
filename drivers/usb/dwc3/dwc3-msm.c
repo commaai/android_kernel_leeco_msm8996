@@ -3423,12 +3423,12 @@ static int dwc3_otg_start_host(struct dwc3_msm *mdwc, int on)
 					"vbus_dwc3");
 		if (IS_ERR(mdwc->vbus_reg) &&
 				PTR_ERR(mdwc->vbus_reg) == -EPROBE_DEFER) {
-			/* regulators may not be ready, so retry again later */
+			// regulators may not be ready, so retry again later
 			mdwc->vbus_reg = NULL;
 			return -EPROBE_DEFER;
 		}
-		mdwc->vbus_on = 0;
-		_msm_usb_vbus_on(mdwc);
+		mdwc->vbus_on = 1;
+		//_msm_usb_vbus_on(mdwc);
 	}
 
 	if (on) {
@@ -3444,7 +3444,7 @@ static int dwc3_otg_start_host(struct dwc3_msm *mdwc, int on)
 		mdwc->hs_phy->flags |= PHY_HOST_MODE;
 		mdwc->ss_phy->flags |= PHY_HOST_MODE;
 		usb_phy_notify_connect(mdwc->hs_phy, USB_SPEED_HIGH);
-		ret = msm_usb_vbus_set(mdwc, 1, false);
+		/*ret = msm_usb_vbus_set(mdwc, 1, false);
 		if (ret) {
 			dev_err(mdwc->dev, "unable to enable vbus_reg\n");
 			mdwc->hs_phy->flags &= ~PHY_HOST_MODE;
@@ -3453,7 +3453,7 @@ static int dwc3_otg_start_host(struct dwc3_msm *mdwc, int on)
 			dbg_event(0xFF, "vregerr psync",
 				atomic_read(&mdwc->dev->power.usage_count));
 			return ret;
-		}
+		}*/
 
 		dwc3_set_mode(dwc, DWC3_GCTL_PRTCAP_HOST);
 
@@ -3505,13 +3505,13 @@ static int dwc3_otg_start_host(struct dwc3_msm *mdwc, int on)
 		dev_dbg(mdwc->dev, "%s: turn off host\n", __func__);
 
 		usb_unregister_atomic_notify(&mdwc->usbdev_nb);
-		if (!IS_ERR(mdwc->vbus_reg))
+		/*if (!IS_ERR(mdwc->vbus_reg))
 			ret = regulator_disable(mdwc->vbus_reg);
 		if (ret) {
 			dev_err(mdwc->dev, "unable to disable vbus_reg\n");
 			ret = 0;
 			//return ret;
-		}
+		}*/
 
 		pm_runtime_get_sync(mdwc->dev);
 		dbg_event(0xFF, "StopHost gsync",
@@ -3778,7 +3778,8 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 	/* Check OTG state */
 	switch (mdwc->otg_state) {
 	case OTG_STATE_UNDEFINED:
-		if (!test_bit(ID, &mdwc->inputs)) {
+		//if (!test_bit(ID, &mdwc->inputs)) {
+    if (1) {
 			dbg_event(0xFF, "undef_host", 0);
 			atomic_set(&dwc->in_lpm, 0);
 			pm_runtime_set_active(mdwc->dev);
@@ -3852,7 +3853,8 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 		break;
 
 	case OTG_STATE_B_IDLE:
-		if (!test_bit(ID, &mdwc->inputs)) {
+    if (1) {
+		//if (!test_bit(ID, &mdwc->inputs)) {
 			dev_dbg(mdwc->dev, "!id\n");
 			mdwc->otg_state = OTG_STATE_A_IDLE;
 			work = 1;
@@ -3956,7 +3958,8 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 
 	case OTG_STATE_A_IDLE:
 		/* Switch to A-Device*/
-		if (test_bit(ID, &mdwc->inputs)) {
+		//if (test_bit(ID, &mdwc->inputs)) {
+    if (0) {
 			dev_dbg(mdwc->dev, "id\n");
 			mdwc->otg_state = OTG_STATE_B_IDLE;
 			mdwc->vbus_retry_count = 0;
@@ -3984,7 +3987,8 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 		break;
 
 	case OTG_STATE_A_HOST:
-		if (test_bit(ID, &mdwc->inputs) || mdwc->hc_died) {
+		//if (test_bit(ID, &mdwc->inputs) || mdwc->hc_died) {
+    if (0) {
 			dev_dbg(mdwc->dev, "id || hc_died\n");
 			dwc3_otg_start_host(mdwc, 0);
 			mdwc->otg_state = OTG_STATE_B_IDLE;
