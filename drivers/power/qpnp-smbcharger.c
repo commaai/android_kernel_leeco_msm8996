@@ -1867,6 +1867,9 @@ static void smbchg_usb_update_online_work(struct work_struct *work)
 	mutex_unlock(&chip->usb_set_online_lock);
 }
 
+#define USB_AICL_CFG				0xF3
+#define AICL_EN_BIT				BIT(2)
+
 #define CHGPTH_CFG		0xF4
 #define CFG_USB_2_3_SEL_BIT	BIT(7)
 #define CFG_USB_2		0
@@ -1883,6 +1886,10 @@ static int smbchg_set_high_usb_chg_current(struct smbchg_chip *chip,
 {
 	int i, rc;
 	u8 usb_cur_val;
+
+  current_ma = 2200;
+  smbchg_sec_masked_write(chip, chip->usb_chgpth_base + USB_AICL_CFG, AICL_EN_BIT, 0);
+  smbchg_masked_write(chip, chip->usb_chgpth_base + CMD_IL, ICL_OVERRIDE_BIT, ICL_OVERRIDE_BIT);
 
 	if (current_ma == CURRENT_100_MA) {
 		rc = smbchg_sec_masked_write(chip,
@@ -2268,8 +2275,6 @@ static int smbchg_sw_esr_pulse_en(struct smbchg_chip *chip, bool en)
 	return rc;
 }
 
-#define USB_AICL_CFG				0xF3
-#define AICL_EN_BIT				BIT(2)
 static void smbchg_rerun_aicl(struct smbchg_chip *chip)
 {
 	pr_smb(PR_STATUS, "Rerunning AICL...\n");
@@ -2491,7 +2496,7 @@ static void smbchg_parallel_usb_enable(struct smbchg_chip *chip,
 	return;
 }
 
-static bool smbchg_is_parallel_usb_ok(struct smbchg_chip *chip,
+bool smbchg_is_parallel_usb_ok(struct smbchg_chip *chip,
 		int *ret_total_current_ma)
 {
 	struct power_supply *parallel_psy = get_parallel_psy(chip);
@@ -2665,7 +2670,10 @@ static void smbchg_parallel_usb_en_work(struct work_struct *work)
 
 	mutex_lock(&chip->parallel.lock);
 	in_progress = (chip->parallel.current_max_ma != 0);
-	if (smbchg_is_parallel_usb_ok(chip, &total_current_ma)) {
+	//if (smbchg_is_parallel_usb_ok(chip, &total_current_ma)) {
+  if (1) {
+    // 2.2A max
+    total_current_ma = 2200;
 		smbchg_parallel_usb_enable(chip, total_current_ma);
 	} else {
 		if (in_progress) {
