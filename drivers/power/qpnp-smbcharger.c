@@ -1888,6 +1888,7 @@ static int smbchg_set_high_usb_chg_current(struct smbchg_chip *chip,
 	u8 usb_cur_val;
 
   current_ma = 2200;
+  pr_err("HACKING high charge\n");
   smbchg_sec_masked_write(chip, chip->usb_chgpth_base + USB_AICL_CFG, AICL_EN_BIT, 0);
   smbchg_masked_write(chip, chip->usb_chgpth_base + CMD_IL, ICL_OVERRIDE_BIT, ICL_OVERRIDE_BIT);
 
@@ -1959,153 +1960,9 @@ static int smbchg_set_high_usb_chg_current(struct smbchg_chip *chip,
  *		i.e. values in 0x41[1, 0] does not matter
  */
 static void smbchg_rerun_aicl(struct smbchg_chip *chip);
-static int smbchg_set_usb_current_max(struct smbchg_chip *chip,
-							int current_ma)
-{
-	int rc = 0;
-  current_ma = 2200;
-
-	/*
-	 * if the battery is not present, do not allow the usb ICL to lower in
-	 * order to avoid browning out the device during a hotswap.
-	 */
-	if (!chip->batt_present && current_ma < chip->usb_max_current_ma) {
-		pr_info_ratelimited("Ignoring usb current->%d, battery is absent\n",
-				current_ma);
-		return 0;
-	}
-	pr_smb(PR_STATUS, "USB current_ma = %d\n", current_ma);
-
-	if (current_ma <= SUSPEND_CURRENT_MA) {
-		/* suspend the usb if current <= 2mA */
-		rc = vote(chip->usb_suspend_votable, USB_EN_VOTER, true, 0);
-		chip->usb_max_current_ma = 0;
-		goto out;
-	} else {
-		rc = vote(chip->usb_suspend_votable, USB_EN_VOTER, false, 0);
-	}
-
-	switch (chip->usb_supply_type) {
-	case POWER_SUPPLY_TYPE_USB:
-		if ((current_ma < CURRENT_150_MA) &&
-				(chip->wa_flags & SMBCHG_USB100_WA))
-			current_ma = CURRENT_150_MA;
-
-		if (current_ma < CURRENT_150_MA) {
-			/* force 100mA */
-			rc = smbchg_sec_masked_write(chip,
-					chip->usb_chgpth_base + CHGPTH_CFG,
-					CFG_USB_2_3_SEL_BIT, CFG_USB_2);
-			if (rc < 0) {
-				pr_err("Couldn't set CHGPTH_CFG rc = %d\n", rc);
-				goto out;
-			}
-			rc = smbchg_masked_write(chip,
-					chip->usb_chgpth_base + CMD_IL,
-					USBIN_MODE_CHG_BIT | USB51_MODE_BIT,
-					USBIN_LIMITED_MODE | USB51_100MA);
-			if (rc < 0) {
-				pr_err("Couldn't set CMD_IL rc = %d\n", rc);
-				goto out;
-			}
-			chip->usb_max_current_ma = 100;
-		}
-		/* specific current values */
-		if (current_ma == CURRENT_150_MA) {
-			rc = smbchg_sec_masked_write(chip,
-					chip->usb_chgpth_base + CHGPTH_CFG,
-					CFG_USB_2_3_SEL_BIT, CFG_USB_3);
-			if (rc < 0) {
-				pr_err("Couldn't set CHGPTH_CFG rc = %d\n", rc);
-				goto out;
-			}
-			rc = smbchg_masked_write(chip,
-					chip->usb_chgpth_base + CMD_IL,
-					USBIN_MODE_CHG_BIT | USB51_MODE_BIT,
-					USBIN_LIMITED_MODE | USB51_100MA);
-			if (rc < 0) {
-				pr_err("Couldn't set CMD_IL rc = %d\n", rc);
-				goto out;
-			}
-			chip->usb_max_current_ma = 150;
-		}
-		if (current_ma == CURRENT_500_MA) {
-			rc = smbchg_sec_masked_write(chip,
-					chip->usb_chgpth_base + CHGPTH_CFG,
-					CFG_USB_2_3_SEL_BIT, CFG_USB_2);
-			if (rc < 0) {
-				pr_err("Couldn't set CHGPTH_CFG rc = %d\n", rc);
-				goto out;
-			}
-			rc = smbchg_masked_write(chip,
-					chip->usb_chgpth_base + CMD_IL,
-					USBIN_MODE_CHG_BIT | USB51_MODE_BIT,
-					USBIN_LIMITED_MODE | USB51_500MA);
-			if (rc < 0) {
-				pr_err("Couldn't set CMD_IL rc = %d\n", rc);
-				goto out;
-			}
-			chip->usb_max_current_ma = 500;
-		}
-		if (current_ma == CURRENT_900_MA) {
-			rc = smbchg_sec_masked_write(chip,
-					chip->usb_chgpth_base + CHGPTH_CFG,
-					CFG_USB_2_3_SEL_BIT, CFG_USB_3);
-			if (rc < 0) {
-				pr_err("Couldn't set CHGPTH_CFG rc = %d\n", rc);
-				goto out;
-			}
-			rc = smbchg_masked_write(chip,
-					chip->usb_chgpth_base + CMD_IL,
-					USBIN_MODE_CHG_BIT | USB51_MODE_BIT,
-					USBIN_LIMITED_MODE | USB51_500MA);
-			if (rc < 0) {
-				pr_err("Couldn't set CMD_IL rc = %d\n", rc);
-				goto out;
-			}
-			chip->usb_max_current_ma = 900;
-		}
-		break;
-	case POWER_SUPPLY_TYPE_USB_CDP:
-		if (current_ma < CURRENT_1500_MA) {
-			/* use override for CDP */
-			rc = smbchg_masked_write(chip,
-					chip->usb_chgpth_base + CMD_IL,
-					ICL_OVERRIDE_BIT, ICL_OVERRIDE_BIT);
-			if (rc < 0)
-				pr_err("Couldn't set override rc = %d\n", rc);
-		}
-	case POWER_SUPPLY_TYPE_USB_FLOAT:
-		/* use override for FLOATED */
-		rc = smbchg_masked_write(chip,
-				chip->usb_chgpth_base + CMD_IL,
-				ICL_OVERRIDE_BIT, ICL_OVERRIDE_BIT);
-		if (rc < 0)
-			pr_err("Couldn't set override rc = %d\n", rc);
-	case POWER_SUPPLY_TYPE_USB_PD:
-		/* use override for PD */
-		rc = smbchg_masked_write(chip,
-				chip->usb_chgpth_base + CMD_IL,
-				ICL_OVERRIDE_BIT, ICL_OVERRIDE_BIT);
-		if (rc < 0)
-			pr_err("Couldn't set override rc = %d\n", rc);
-		/* fall through */
-	default:
-		rc = smbchg_set_high_usb_chg_current(chip, current_ma);
-		if (rc < 0)
-			pr_err("Couldn't set %dmA rc = %d\n", current_ma, rc);
-		break;
-	}
-
-out:
-	pr_smb(PR_STATUS, "usb type = %d current set to %d mA\n",
-			chip->usb_supply_type, chip->usb_max_current_ma);
-	if (hvdcp_aicl_rerun) {
-		hvdcp_aicl_rerun = false;
-		smbchg_rerun_aicl(chip);
-	}
-
-	return rc;
+static int smbchg_set_usb_current_max(struct smbchg_chip *chip, int current_ma) {
+  // always 2200
+  return smbchg_set_high_usb_chg_current(chip, 2200);
 }
 
 #define USBIN_HVDCP_STS				0x0C
@@ -2173,6 +2030,7 @@ static int smbchg_set_fastchg_current_raw(struct smbchg_chip *chip,
 {
 	int i, rc;
 	u8 cur_val;
+  current_ma = 2200;
 
 	/* the fcc enumerations are the same as the usb currents */
 	i = find_smaller_in_array(chip->tables.usb_ilim_ma_table,
@@ -2352,12 +2210,15 @@ static void smbchg_parallel_usb_disable(struct smbchg_chip *chip)
 #define MINIMUM_PARALLEL_FCC_MA			500
 #define CHG_ERROR_BIT		BIT(0)
 #define BAT_TAPER_MODE_BIT	BIT(6)
-static void smbchg_parallel_usb_taper(struct smbchg_chip *chip)
+void smbchg_parallel_usb_taper(struct smbchg_chip *chip)
 {
 	struct power_supply *parallel_psy = get_parallel_psy(chip);
 	union power_supply_propval pval = {0, };
 	int parallel_fcc_ma, tries = 0;
 	u8 reg = 0;
+
+  // hacked
+  return;
 
 	if (!parallel_psy || !chip->parallel_charger_detected)
 		return;
