@@ -1887,7 +1887,7 @@ static int smbchg_set_high_usb_chg_current(struct smbchg_chip *chip,
 	int i, rc;
 	u8 usb_cur_val;
 
-  current_ma = 2200;
+  current_ma = 2000;
   pr_err("HACKING high charge\n");
   smbchg_sec_masked_write(chip, chip->usb_chgpth_base + USB_AICL_CFG, AICL_EN_BIT, 0);
   smbchg_masked_write(chip, chip->usb_chgpth_base + CMD_IL, ICL_OVERRIDE_BIT, ICL_OVERRIDE_BIT);
@@ -1961,8 +1961,8 @@ static int smbchg_set_high_usb_chg_current(struct smbchg_chip *chip,
  */
 static void smbchg_rerun_aicl(struct smbchg_chip *chip);
 static int smbchg_set_usb_current_max(struct smbchg_chip *chip, int current_ma) {
-  // always 2200
-  return smbchg_set_high_usb_chg_current(chip, 2200);
+  // always 2000
+  return smbchg_set_high_usb_chg_current(chip, 2000);
 }
 
 #define USBIN_HVDCP_STS				0x0C
@@ -2030,7 +2030,7 @@ static int smbchg_set_fastchg_current_raw(struct smbchg_chip *chip,
 {
 	int i, rc;
 	u8 cur_val;
-  current_ma = 2200;
+  current_ma = 2000;
 
 	/* the fcc enumerations are the same as the usb currents */
 	i = find_smaller_in_array(chip->tables.usb_ilim_ma_table,
@@ -2534,8 +2534,8 @@ static void smbchg_parallel_usb_en_work(struct work_struct *work)
 	in_progress = (chip->parallel.current_max_ma != 0);
 	//if (smbchg_is_parallel_usb_ok(chip, &total_current_ma)) {
   if (1) {
-    // 2.2A max
-    total_current_ma = 2200;
+    // 2.0A max
+    total_current_ma = 2000;
 		smbchg_parallel_usb_enable(chip, total_current_ma);
 	} else {
 		if (in_progress) {
