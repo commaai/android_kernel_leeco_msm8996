@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2016, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2017, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -49,7 +49,6 @@
 	((flags & MDSS_MDP_RIGHT_MIXER) || (dst_x >= left_lm_w))
 
 #define BUF_POOL_SIZE 32
-static struct workqueue_struct *letv_retire_wq;
 
 static int mdss_mdp_overlay_free_fb_pipe(struct msm_fb_data_type *mfd);
 static int mdss_mdp_overlay_fb_parse_dt(struct msm_fb_data_type *mfd);
@@ -4546,6 +4545,12 @@ static int mdss_mdp_hw_cursor_pipe_update(struct msm_fb_data_type *mfd,
 	req->transp_mask = img->bg_color & ~(0xff << var->transp.offset);
 
 	if (mfd->cursor_buf && (cursor->set & FB_CUR_SETIMAGE)) {
+		if (img->width * img->height * 4 > cursor_frame_size) {
+			pr_err("cursor image size is too large\n");
+			ret = -EINVAL;
+			goto done;
+		}
+
 		ret = copy_from_user(mfd->cursor_buf, img->data,
 				     img->width * img->height * 4);
 		if (ret) {
@@ -5574,13 +5579,6 @@ static struct mdss_mdp_ctl *__mdss_mdp_overlay_ctl_init(
 
 	mdp5_data->ctl = ctl;
 
-	rc = mdss_mdp_pp_default_overlay_config(mfd, pdata);
-	if (rc) {
-		pr_err("Unable to set default postprocessing configs for fb%d ret %d\n",
-			mfd->index, rc);
-		rc = 0;
-	}
-
 error:
 	if (rc)
 		return ERR_PTR(rc);
@@ -5734,7 +5732,6 @@ static int mdss_mdp_overlay_off(struct msm_fb_data_type *mfd)
 	struct mdss_data_type *mdata = mdss_mdp_get_mdata();
 	struct mdss_mdp_mixer *mixer;
 	int need_cleanup;
-	int retire_cnt;
 
 	if (!mfd)
 		return -ENODEV;
@@ -5802,17 +5799,14 @@ static int mdss_mdp_overlay_off(struct msm_fb_data_type *mfd)
 	 * for retire fence to be updated.
 	 * As a last resort signal the timeline if vsync doesn't arrive.
 	 */
-
 	if (mdp5_data->retire_cnt) {
 		u32 fps = mdss_panel_get_framerate(mfd->panel_info,
 				FPS_RESOLUTION_HZ);
 		u32 vsync_time = 1000 / (fps ? : DEFAULT_FRAME_RATE);
 
 		msleep(vsync_time);
-		mutex_lock(&mfd->mdp_sync_pt_data.sync_mutex);
-		retire_cnt = mdp5_data->retire_cnt;
-		mutex_unlock(&mfd->mdp_sync_pt_data.sync_mutex);
-		__vsync_retire_signal(mfd, retire_cnt);
+
+		__vsync_retire_signal(mfd, mdp5_data->retire_cnt);
 
 		/*
 		 * the retire work can still schedule after above retire_signal
@@ -6027,7 +6021,7 @@ static void __vsync_retire_handle_vsync(struct mdss_mdp_ctl *ctl, ktime_t t)
 	}
 
 	mdp5_data = mfd_to_mdp5_data(mfd);
-	queue_work(letv_retire_wq, &mdp5_data->retire_work);
+	schedule_work(&mdp5_data->retire_work);
 }
 
 static void __vsync_retire_work_handler(struct work_struct *work)
@@ -6098,13 +6092,9 @@ static int __vsync_set_vsync_handler(struct msm_fb_data_type *mfd)
 	struct mdss_overlay_private *mdp5_data = mfd_to_mdp5_data(mfd);
 	struct mdss_mdp_ctl *ctl;
 	int rc;
-	int retire_cnt;
 
 	ctl = mdp5_data->ctl;
-	mutex_lock(&mfd->mdp_sync_pt_data.sync_mutex);
-	retire_cnt = mdp5_data->retire_cnt;
-	mutex_unlock(&mfd->mdp_sync_pt_data.sync_mutex);
-	if (!retire_cnt ||
+	if (!mdp5_data->retire_cnt ||
 		mdp5_data->vsync_retire_handler.enabled)
 		return 0;
 
@@ -6237,12 +6227,6 @@ int mdss_mdp_overlay_init(struct msm_fb_data_type *mfd)
 	struct mdss_overlay_private *mdp5_data = NULL;
 	struct irq_info *mdss_irq;
 	int rc;
-
-	letv_retire_wq = alloc_workqueue("letv_retire_wq", WQ_UNBOUND | WQ_HIGHPRI, 0);
-	if (!letv_retire_wq) {
-		pr_err("fail to allocate letv_retire_wq");
-		return -ENOMEM;
-	}
 
 	mdp5_data = kzalloc(sizeof(struct mdss_overlay_private), GFP_KERNEL);
 	if (!mdp5_data) {

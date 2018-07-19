@@ -2,7 +2,7 @@
  * Core MDSS framebuffer driver.
  *
  * Copyright (C) 2007 Google Incorporated
- * Copyright (c) 2008-2016, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2008-2017, The Linux Foundation. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -69,12 +69,7 @@
 
 #define BLANK_FLAG_LP	FB_BLANK_NORMAL
 #define BLANK_FLAG_ULP	FB_BLANK_VSYNC_SUSPEND
-#define MDSS_FB_SPEC_CAR_SEQ_CMDLINE_MAX 30
-#define MDSS_FB_TURBO_OLED_FLIP_CHARGEMODE 30
 
-bool flip_chargermode_flag = false;
-char flip_chargermode[MDSS_FB_TURBO_OLED_FLIP_CHARGEMODE];
-char spec_char_seq[MDSS_FB_SPEC_CAR_SEQ_CMDLINE_MAX];
 static struct fb_info *fbi_list[MAX_FBI_LIST];
 static int fbi_list_index;
 
@@ -757,35 +752,6 @@ static ssize_t mdss_fb_get_dfps_mode(struct device *dev,
 	return ret;
 }
 
-static int __init turbo_oled_flip_chargemode(char *str)
-{
-    strlcpy(flip_chargermode, str, MDSS_FB_TURBO_OLED_FLIP_CHARGEMODE);
-
-	if (strncmp(flip_chargermode, "flip_chargemode", 15) == 0)
-		flip_chargermode_flag = true;
-
-    return 1;
-}
-__setup("android.letv.chargerflip=", turbo_oled_flip_chargemode);
-
-static int __init get_spec_char_seq(char *str)
-{
-    strlcpy(spec_char_seq, str, MDSS_FB_SPEC_CAR_SEQ_CMDLINE_MAX);
-
-    return 1;
-}
-__setup("android.letv.spec_charseq=", get_spec_char_seq);
-
-static ssize_t mdss_fb_get_spec_char_seq(struct device *dev,
-		struct device_attribute *attr, char *buf)
-{
-	int ret;
-
-	ret = strlcpy(buf, spec_char_seq, (sizeof(buf)+1));
-
-	return ret;
-}
-
 static ssize_t mdss_fb_change_persist_mode(struct device *dev,
 	struct device_attribute *attr, const char *buf, size_t len)
 {
@@ -841,6 +807,7 @@ static ssize_t mdss_fb_get_persist_mode(struct device *dev,
 	pinfo = &pdata->panel_info;
 
 	ret = scnprintf(buf, PAGE_SIZE, "%d\n", pinfo->persist_mode);
+
 	return ret;
 }
 
@@ -860,8 +827,6 @@ static DEVICE_ATTR(msm_fb_panel_status, S_IRUGO | S_IWUSR,
 	mdss_fb_get_panel_status, mdss_fb_force_panel_dead);
 static DEVICE_ATTR(msm_fb_dfps_mode, S_IRUGO | S_IWUSR,
 	mdss_fb_get_dfps_mode, mdss_fb_change_dfps_mode);
-static DEVICE_ATTR(msm_fb_spec_char_seq, S_IRUGO | S_IWUSR,
-	mdss_fb_get_spec_char_seq, NULL);
 static DEVICE_ATTR(msm_fb_persist_mode, S_IRUGO | S_IWUSR,
 	mdss_fb_get_persist_mode, mdss_fb_change_persist_mode);
 static struct attribute *mdss_fb_attrs[] = {
@@ -875,7 +840,6 @@ static struct attribute *mdss_fb_attrs[] = {
 	&dev_attr_msm_fb_thermal_level.attr,
 	&dev_attr_msm_fb_panel_status.attr,
 	&dev_attr_msm_fb_dfps_mode.attr,
-	&dev_attr_msm_fb_spec_char_seq.attr,
 	&dev_attr_msm_fb_persist_mode.attr,
 	NULL,
 };
@@ -1439,7 +1403,7 @@ static int mdss_fb_resume_sub(struct msm_fb_data_type *mfd)
 
 	reinit_completion(&mfd->power_set_comp);
 	mfd->is_power_setting = true;
-	printk("mdss_fb resume index=%d\n", mfd->index);
+	pr_debug("mdss_fb resume index=%d\n", mfd->index);
 
 	ret = mdss_fb_pan_idle(mfd);
 	if (ret) {
@@ -1990,10 +1954,10 @@ static int mdss_fb_blank(int blank_mode, struct fb_info *info)
 		return ret;
 	}
 
-  if (blank_mode != FB_BLANK_UNBLANK) {
-    pr_warn("hacked to BLANK_FLAG_LP\n");
-    blank_mode = BLANK_FLAG_LP;
-  }
+	if (blank_mode != FB_BLANK_UNBLANK) {
+		pr_warn("hacked to BLANK_FLAG_LP\n");
+		blank_mode = BLANK_FLAG_LP;
+	}
 
 	if (mfd->op_enable == 0) {
 		if (blank_mode == FB_BLANK_UNBLANK)
@@ -4204,8 +4168,6 @@ static int mdss_fb_handle_buf_sync_ioctl(struct msm_sync_pt_data *sync_pt_data,
 		goto buf_sync_err_2;
 	}
 
-	sync_fence_install(rel_fence, rel_fen_fd);
-
 	ret = copy_to_user(buf_sync->rel_fen_fd, &rel_fen_fd, sizeof(int));
 	if (ret) {
 		pr_err("%s: copy_to_user failed\n", sync_pt_data->fence_name);
@@ -4242,8 +4204,6 @@ static int mdss_fb_handle_buf_sync_ioctl(struct msm_sync_pt_data *sync_pt_data,
 		goto buf_sync_err_3;
 	}
 
-	sync_fence_install(retire_fence, retire_fen_fd);
-
 	ret = copy_to_user(buf_sync->retire_fen_fd, &retire_fen_fd,
 			sizeof(int));
 	if (ret) {
@@ -4253,6 +4213,9 @@ static int mdss_fb_handle_buf_sync_ioctl(struct msm_sync_pt_data *sync_pt_data,
 		sync_fence_put(retire_fence);
 		goto buf_sync_err_3;
 	}
+
+	sync_fence_install(rel_fence, rel_fen_fd);
+	sync_fence_install(retire_fence, retire_fen_fd);
 
 skip_retire_fence:
 	mutex_unlock(&sync_pt_data->sync_mutex);
