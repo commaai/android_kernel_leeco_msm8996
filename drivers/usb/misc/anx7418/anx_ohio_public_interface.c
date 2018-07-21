@@ -99,79 +99,6 @@ inline u8 send_pd_msg(PD_MSG_TYPE type, const char *buf, u8 size)
 	return rst;
 }
 
-extern int get_charger_charging_current(void);
-extern int get_battery_voltage(void);
-extern int get_charging_status(void);
-extern int get_typec_temperature(void);
-
-/*6000mA = 0xFF, 25mA delta equal to 0x1 */
-static u8 report_charging_current(void)
-{
-	u8 charging_current;
-	int tmp;
-
-	tmp = -get_charger_charging_current();
-	charging_current = 0xFF - (6000 - tmp) / 25;
-	printk("charging current=%dmA = 0x%x; ",tmp, charging_current);
-	return charging_current;
-}
-
-/* 4.7V=0xFF; 0.01V delta equal to 0x1*/
-static u8 report_battery_voltage(void)
-{
-	u8 battery_voltage;
-	int tmp;
-
-	tmp = get_battery_voltage();
-	battery_voltage = 0xFF - (4700 - tmp) / 10;
-	printk("battery voltage=%dmV = 0x%x; ", tmp, battery_voltage);
-	return battery_voltage;
-}
-
-/*0x00 stop charging;0x01 CC charging;0x02 CV charging;0x03 Battery Full;0x04 resume charging*/
-static u8 report_charging_status(void)
-{
-	int tmp;
-	u8 charging_status;
-
-	tmp = get_charging_status();
-	switch (tmp)
-	{
-	case 0:		/* POWER_SUPPLY_CHARGE_TYPE_UNKNOWN */
-	case 1:		/* POWER_SUPPLY_CHARGE_TYPE_NONE */
-	case 2:		/* POWER_SUPPLY_CHARGE_TYPE_TRICKLE */
-		charging_status = 0x00;
-		break;
-	case 3:		/* POWER_SUPPLY_CHARGE_TYPE_FAST */
-		charging_status = 0x01;
-		break;
-	case 4:		/* POWER_SUPPLY_CHARGE_TYPE_TAPER */
-		charging_status = 0x02;
-	case 5:		/* POWER_SUPPLY_STATUS_FULL */
-		charging_status = 0x03;
-		break;
-	}
-	printk("0x%x; ", charging_status);
-	return charging_status;
-}
-
-/*25degree equal to 0x80,  0.5degree delta equal to 0x1*/
-static u8 report_typec_temperature(void)
-{
-	int tmp;
-	u8 temp;
-	return 0x70;
-
-	tmp = get_typec_temperature();
-	if (tmp >= 25) {
-		temp = 0x80 + (tmp - 25) * 2;
-	} else {
-		temp = 0x80 - (25 - tmp) * 2;
-	}
-	printk("temperature=%d=0x%x;", tmp, temp);
-	return temp;
-}
-
 /**
  * @desc:   The Interface that AP handle the specific USB PD command from Ohio
  *
@@ -188,7 +115,6 @@ inline u8 dispatch_rcvd_pd_msg(PD_MSG_TYPE type, void *para, u8 para_len)
 {
 	u8 rst = 0;
 	int i;
-	u8 vdm_vdo[8] = {0};
 	u8 *tmp = (u8*)para;
 
 	pd_callback_t fnc = get_pd_callback_fnc(type);
@@ -236,32 +162,6 @@ inline u8 dispatch_rcvd_pd_msg(PD_MSG_TYPE type, void *para, u8 para_len)
 	case TYPE_HARD_RST:
 		rst = recv_pd_hard_rst_default_callback(para, para_len);
 		break;
-#ifdef SUPP_VDM_CHARGING
-	case TYPE_VDM:
-		if (para_len < 2) {
-			printk("%s:TYPE_VDM error para_len\n", __func__);
-			break;
-		}
-		if((tmp[0] == 0x00) &&
-		   (tmp[1] == 0x01)) {
-			tmp[0] = 0x40;
-			rst = recv_pd_vdm_default_callback(para, para_len);
-		} else if ((tmp[0] == 0x01) && (tmp[1] == 0x01)) {
-			vdm_vdo[0] = 0x41;
-			vdm_vdo[1] = 0x1;
-			vdm_vdo[2] = 0x0;
-			vdm_vdo[3] = 0x0;
-
-			printk("ohio. : ");
-			vdm_vdo[4] = report_charging_current();
-			vdm_vdo[5] = report_battery_voltage();
-			vdm_vdo[6] = report_charging_status();
-			vdm_vdo[7] = report_typec_temperature();
-			printk("\n");
-			rst = recv_pd_vdm_default_callback(vdm_vdo, 8);
-		}
-		break;
-#endif
 	default:
 		rst = 0;
 		break;

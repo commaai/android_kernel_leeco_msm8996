@@ -125,8 +125,6 @@ static int letv_pd_usb_off_charger_mode;
 static bool letv_pd_charger_confirmed;
 
 struct message_handle_struct *timer_msg_struct[TIMER_NUMBER_END];
-extern int letv_pd_notice_charger_in_parameter(int voltage, int mA);
-extern int letv_pd_notice_ver_just_vol(unsigned char *pd_ver, int size);
 
 static LIST_HEAD(handle_list_head);
 static DEFINE_SPINLOCK(letv_pd_lock);
@@ -968,7 +966,6 @@ static int letv_pd_message_handle_ps_rdy(struct hpi_msg *msg)
 		}
 
 		letv_pd_set_charger_in_parameter(voltage, mA);
-		letv_pd_notice_charger_in_parameter(letv_pd_charger_in_voltage, letv_pd_charger_in_mA);
 		return 0;
 	}
 
@@ -981,7 +978,6 @@ static int letv_pd_message_handle_ps_rdy(struct hpi_msg *msg)
 		}
 
 		letv_pd_set_charger_in_parameter(voltage, mA);
-		letv_pd_notice_charger_in_parameter(letv_pd_charger_in_voltage, letv_pd_charger_in_mA);
 		break;
 	case LETV_USB_DFP_MODE:
 		/*DFP mode charger, it's not used now*/
@@ -1567,7 +1563,6 @@ static int letv_pd_message_vdm_handle_charger_pn(unsigned char *vdm_data, int si
 
 	pr_err("%s:DEBUG: charger pn=0x%x, 0x%x, 0x%x, 0x%x\n",
 			__func__,charger_pn[0],charger_pn[1],charger_pn[2],charger_pn[3]);
-	letv_pd_notice_ver_just_vol(charger_pn, 4);
 	return 0;
 }
 
