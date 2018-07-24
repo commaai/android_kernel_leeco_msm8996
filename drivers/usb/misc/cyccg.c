@@ -5940,7 +5940,7 @@ err2:
 	cyccg_init_gpio(cyccg,false);
 err1:
 	if (client->dev.of_node) {
-		kfree(pdata);
+		kfree(cyccg->pdata);
 	}
 	cyccg_pdata = NULL;
 	g_cyccg = NULL;

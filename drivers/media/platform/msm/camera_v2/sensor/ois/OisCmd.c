@@ -371,7 +371,7 @@ unsigned short	TneRun( void )
 
 
 	
-/* 表示 */
+/* \95\\8E\A6 */
 	
 	return( UsFinSts ) ;
 }
@@ -391,7 +391,7 @@ unsigned long	TnePtp ( unsigned char	UcDirSel, unsigned char	UcBfrAft )
 {
 	UnDwdVal		StTneVal ;
 
-	MesFil( THROUGH ) ;					// 測定用フィルターを設定する。
+	MesFil( THROUGH ) ;					// \91\AA\92\E8\97p\83t\83B\83\8B\83^\81[\82\F0\90ﾝ定す\82\E9\81B
 
 
 	if ( !UcDirSel ) {
@@ -1402,14 +1402,14 @@ unsigned char	TneGvc( void )
 	RegWriteA( IZBH,	(unsigned char)(INITVAL >> 8) ) ;	// 0x02A2		Set Offset High byte
 	RegWriteA( IZBL,	(unsigned char)INITVAL ) ;			// 0x02A3		Set Offset Low byte
 	
-	MesFil( THROUGH ) ;				// 測定用フィルターを設定する。
+	MesFil( THROUGH ) ;				// \91\AA\92\E8\97p\83t\83B\83\8B\83^\81[\82\F0\90ﾝ定す\82\E9\81B
 	//////////
 	// X
 	//////////
 	RegWriteA( WC_MES1ADD0, 0x00 ) ;		// 0x0194
 	RegWriteA( WC_MES1ADD1, 0x00 ) ;		// 0x0195
 	ClrGyr( 0x1000 , CLR_FRAM1 );					// Measure Filter RAM Clear
-	StAdjPar.StGvcOff.UsGxoVal = (unsigned short)GenMes( AD2Z, 0 );		// 64回の平均値測定	GYRMON1(0x1110) <- GXADZ(0x144A)
+	StAdjPar.StGvcOff.UsGxoVal = (unsigned short)GenMes( AD2Z, 0 );		// 64\89\F1\82ﾌ表BD\8Bﾏ値\91\AA\92\E8	GYRMON1(0x1110) <- GXADZ(0x144A)
 	RegWriteA( IZAH, (unsigned char)(StAdjPar.StGvcOff.UsGxoVal >> 8) ) ;	// 0x02A0		Set Offset High byte
 	RegWriteA( IZAL, (unsigned char)(StAdjPar.StGvcOff.UsGxoVal) ) ;		// 0x02A1		Set Offset Low byte
 	//////////
@@ -1418,7 +1418,7 @@ unsigned char	TneGvc( void )
 	RegWriteA( WC_MES1ADD0, 0x00 ) ;		// 0x0194
 	RegWriteA( WC_MES1ADD1, 0x00 ) ;		// 0x0195
 	ClrGyr( 0x1000 , CLR_FRAM1 );					// Measure Filter RAM Clear
-	StAdjPar.StGvcOff.UsGyoVal = (unsigned short)GenMes( AD3Z, 0 );		// 64回の平均値測定	GYRMON2(0x1111) <- GYADZ(0x14CA)
+	StAdjPar.StGvcOff.UsGyoVal = (unsigned short)GenMes( AD3Z, 0 );		// 64\89\F1\82ﾌ表BD\8Bﾏ値\91\AA\92\E8	GYRMON2(0x1111) <- GYADZ(0x14CA)
 	RegWriteA( IZBH, (unsigned char)(StAdjPar.StGvcOff.UsGyoVal >> 8) ) ;	// 0x02A2		Set Offset High byte
 	RegWriteA( IZBL, (unsigned char)(StAdjPar.StGvcOff.UsGyoVal) ) ;		// 0x02A3		Set Offset Low byte
 	
@@ -1613,7 +1613,7 @@ void	S2cPro( unsigned char uc_mode )
 #ifdef H1COEF_CHANGER
 		SetH1cMod( S2MODE ) ;							/* cancel Lvl change */
 #endif
-		// HPF→Through Setting
+		// HPF\81\A8Through Setting
 		RegWriteA( WG_SHTON, 0x11 ) ;							// 0x0107
 		RamWrite32A( gxh1c, DIFIL_S2 );							// 0x1012
 		RamWrite32A( gyh1c, DIFIL_S2 );							// 0x1112
@@ -1622,7 +1622,7 @@ void	S2cPro( unsigned char uc_mode )
 	{
 		RamWrite32A( gxh1c, UlH1Coefval );							// 0x1012
 		RamWrite32A( gyh1c, UlH1Coefval );							// 0x1112
-		// HPF→Through Setting
+		// HPF\81\A8Through Setting
 		RegWriteA( WG_SHTON, 0x00 ) ;							// 0x0107
 
 #ifdef H1COEF_CHANGER
@@ -1730,7 +1730,7 @@ const unsigned short	CucFreqVal[ 17 ]	= {
 	
 #define		USE_SINLPF			/* if sin or circle movement is used LPF , this define has to enable */
 	
-/* 振幅はsxsin(0x10D5),sysin(0x11D5)で調整 */
+/* \90U\95\9D\82\CDsxsin(0x10D5),sysin(0x11D5)\82ﾅ箪B2\90\AE */
 void	SetSinWavePara( unsigned char UcTableVal ,  unsigned char UcMethodVal )
 {
 	unsigned short	UsFreqDat ;
@@ -1758,7 +1758,7 @@ void	SetSinWavePara( unsigned char UcTableVal ,  unsigned char UcMethodVal )
 	}
 #endif
 
-	if( UsFreqDat == 0xFFFF )			/* Sine波中止 */
+	if( UsFreqDat == 0xFFFF )			/* Sine\94g\92\86\8E~ */
 	{
 
 		RegReadA( WH_EQSWX, &UcEqSwX ) ;				/* 0x0170	*/
@@ -2111,7 +2111,7 @@ void	SetZsp( unsigned char	UcZoomStepDat )
 	
 	/* Zoom Step */
 	if(UcZoomStepDat > (ZOOMTBL - 1))
-		UcZoomStepDat = (ZOOMTBL -1) ;										/* 上限をZOOMTBL-1に設定する */
+		UcZoomStepDat = (ZOOMTBL -1) ;										/* \8F\E3\8C\C0\82\F0ZOOMTBL-1\82ﾉ設定す\82\E9 */
 
 	if( UcZoomStepDat == 0 )				/* initial setting	*/
 	{
@@ -2315,7 +2315,7 @@ const signed char	ScCselRate[ CRATETABLE ]	= {
 //#define	TARGET_FREQ		24000.0F/* 24MHz */
 #define	START_RSEL		0x04	/* Typ */
 #define	START_CSEL		0x08	/* Typ bit4:OSCPMSEL */
-#define	MEAS_MAX		32		/* 上限32回 */
+#define	MEAS_MAX		32		/* \8F\E3\8C\C032\89\F1 */
 /* Measure Status (UcClkJdg) */
 #define	UNDR_MEAS		0x00
 #define	FIX_MEAS		0x01
@@ -2390,7 +2390,7 @@ unsigned short	OscAdj( void )
 			{
 				UcMeasFlg |= RSEL1ST ;
 			}
-			ScTblRate_Now = ScRselRate[ UcOscrsel ] ;					/* 今のRate */
+			ScTblRate_Now = ScRselRate[ UcOscrsel ] ;					/* \8D\A1\82\CCRate */
 			ScTblRate_Tgt = ScTblRate_Now + (short)FcalB ;
 			if( ScTblRate_Now > ScTblRate_Tgt )
 			{
@@ -3062,7 +3062,7 @@ unsigned char	TneHvc( void )
 	
 	WitTim( 500 ) ;
 	
-	//平均値測定
+	//\95\BD\8Bﾏ値\91\AA\92\E8
 	
 	MesFil( THROUGH ) ;					// Set Measure Filter
 	
@@ -3114,7 +3114,7 @@ void	SetGcf( unsigned char	UcSetNum )
 	
 	/* Zoom Step */
 	if( UcSetNum > (COEFTBL - 1) ){
-		UcSetNum = (COEFTBL -1) ;			/* 上限をCOEFTBL-1に設定する */
+		UcSetNum = (COEFTBL -1) ;			/* \8F\E3\8C\C0\82\F0COEFTBL-1\82ﾉ設定す\82\E9 */
 	}
 	
 	if( UcModule == MODULE_20M ){
@@ -3675,7 +3675,7 @@ void	SetDOFSTDAF_WT( unsigned char ucSetDat )
 
 void SmoothSvrOff(void)
 {
-	unsigned short	UsStep = 0x0100, UcCnt;
+	unsigned short	UsStep = 0x0100, UcCnt = 0;
 
 	unsigned short	UsDrv;
 

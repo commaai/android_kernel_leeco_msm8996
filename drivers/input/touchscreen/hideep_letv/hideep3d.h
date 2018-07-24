@@ -79,7 +79,7 @@
  * some special switch of functions.
  *************************************************************************/
 /* HIDEEP_DEBUG_DEVICE is for input output function for debugging. */
-#define HIDEEP_DEBUG_DEVICE
+/*#define HIDEEP_DEBUG_DEVICE*/
 
 /* HIDEEP_AUTO_UPDATE is for FW automatically update function. */
 #define HIDEEP_AUTO_UPDATE
@@ -95,7 +95,7 @@
 #define HIDEEP_DWZ_VERSION_CHECK
 
 /* HIDEEP_SELFTEST_MODE if define, it will use self test. */
-#define HIDEEP_SELFTEST_MODE
+/*#define HIDEEP_SELFTEST_MODE*/
 
 #ifdef HIDEEP_SELFTEST_MODE
 #define SELF_TEST_DATA_ADDR 0x1008

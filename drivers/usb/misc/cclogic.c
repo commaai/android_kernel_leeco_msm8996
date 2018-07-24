@@ -172,13 +172,13 @@ EXPORT_SYMBOL(cclogic_set_vconn_register);
 static int cclogic_reset_8904(void)
 {
 	struct usb_device *udev;
-	int ret;
 
-	if (letv_audio_mode_supported(&udev))
-		ret = usb_control_msg(udev, usb_sndctrlpipe(udev, 0), 0x0a,
+	if (letv_audio_mode_supported(&udev)) {
+		int ret = usb_control_msg(udev, usb_sndctrlpipe(udev, 0), 0x0a,
 				      0x40, 0x0, 0x0, NULL, 0, 100);
-	if (ret)
-		pr_err("%s failed, err %d\n", __func__, ret);
+		if (ret)
+			pr_err("%s failed, err %d\n", __func__, ret);
+	}
 
 	return 0;
 }

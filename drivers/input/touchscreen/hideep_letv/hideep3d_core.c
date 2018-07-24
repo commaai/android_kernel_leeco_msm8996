@@ -55,7 +55,10 @@ unsigned short hideep3d_get_value(unsigned short x, unsigned short y)
 		HIDEEP3D_INFO("Device state is power updating");
 		goto hideep3d_get_value_exit;
 	}
-	if (g_h3d->debug_dev.enable == false) {
+#ifdef HIDEEP_DEBUG_DEVICE
+	if (g_h3d->debug_dev.enable == false)
+#endif
+	{
 		buf[0] = x & 0xff;
 		buf[1] = (x >> 8) & 0xff;
 		buf[2] = y & 0xff;
@@ -710,8 +713,12 @@ hideep_probe_register_fb_err:
 	hideep3d_sysfs_exit(h3d);
 
 hideep_probe_sysfs_init_err:
+#ifdef HIDEEP_SELFTEST_MODE
 hideep_probe_procfs_init_err:
+#endif
+#ifdef HIDEEP_DEBUG_DEVICE
 hideep_probe_debug_init_err:
+#endif
 
 #ifdef HIDEEP_DWZ_VERSION_CHECK
 hideep_probe_read_dwz_err:

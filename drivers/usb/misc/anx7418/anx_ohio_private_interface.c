@@ -1322,7 +1322,7 @@ u8 sel_voltage_pdo_index = 0x02;
 inline u8 build_rdo_from_source_caps(u8 obj_cnt, u8 *buf)
 {
 	u8 i = 0;
-	u16 pdo_h, pdo_l, pdo_h_tmp, pdo_l_tmp;
+	u16 pdo_h = 0, pdo_l = 0, pdo_h_tmp, pdo_l_tmp;
 	u16 max_request_ma;
 	u32 pdo_max, pdo_max_tmp;
 
@@ -1347,8 +1347,7 @@ inline u8 build_rdo_from_source_caps(u8 obj_cnt, u8 *buf)
 			sel_voltage_pdo_index = i;
 		}
 	}
-	pr_info("ohio maxV=%d, cnt %d index %d\n", pdo_max_tmp, obj_cnt,
-		sel_voltage_pdo_index);
+
 	if ((pdo_h & (3 << 14)) != (PDO_TYPE_BATTERY >> 16)) {
 		max_request_ma = (u16) ((pdo_l & 0x3ff) * 10);
 		pr_info("ohio maxMa %d\n", max_request_ma);
