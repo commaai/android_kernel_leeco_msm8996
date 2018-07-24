@@ -492,6 +492,11 @@ struct devfreq *devfreq_add_device(struct device *dev,
 		goto err_out;
 	}
 
+	if (!strcmp(dev_name(dev), "soc:qcom,cpubw")) {
+		devfreq->force_perf_gov = true;
+		governor_name = "performance";
+	}
+
 	mutex_init(&devfreq->lock);
 	mutex_lock(&devfreq->lock);
 	devfreq->dev.parent = dev;
@@ -810,6 +815,9 @@ static ssize_t governor_store(struct device *dev, struct device_attribute *attr,
 	int ret;
 	char str_governor[DEVFREQ_NAME_LEN + 1];
 	struct devfreq_governor *governor;
+
+	if (df->force_perf_gov)
+		return -EINVAL;
 
 	ret = sscanf(buf, "%" __stringify(DEVFREQ_NAME_LEN) "s", str_governor);
 	if (ret != 1)

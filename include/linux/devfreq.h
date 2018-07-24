@@ -171,6 +171,7 @@ struct devfreq {
 
 	unsigned long min_freq;
 	unsigned long max_freq;
+	bool force_perf_gov;
 	bool stop_polling;
 
 	/* information for device frequency transition */
