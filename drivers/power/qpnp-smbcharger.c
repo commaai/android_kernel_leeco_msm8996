@@ -40,6 +40,8 @@
 #include <linux/ktime.h>
 #include "pmic-voter.h"
 
+#define EON_MAX_MA 2100
+
 /* Mask/Bit helpers */
 #define _SMB_MASK(BITS, POS) \
 	((unsigned char)(((1 << (BITS)) - 1) << (POS)))
@@ -1968,6 +1970,9 @@ static void taper_irq_en(struct smbchg_chip *chip, bool en)
 
 static int smbchg_get_aicl_level_ma(struct smbchg_chip *chip)
 {
+#ifdef CONFIG_MACH_ZL1
+	return EON_MAX_MA;
+#else
 	int rc;
 	u8 reg;
 
@@ -1987,6 +1992,7 @@ static int smbchg_get_aicl_level_ma(struct smbchg_chip *chip)
 		return 0;
 	}
 	return chip->tables.usb_ilim_ma_table[reg];
+#endif
 }
 
 static void smbchg_parallel_usb_disable(struct smbchg_chip *chip)
@@ -2102,8 +2108,12 @@ static void smbchg_parallel_usb_enable(struct smbchg_chip *chip,
 			* (100 - smbchg_main_chg_icl_percent) / 100;
 	taper_irq_en(chip, true);
 	power_supply_set_present(parallel_psy, true);
+#ifdef CONFIG_MACH_ZL1
+	power_supply_set_current_limit(parallel_psy, EON_MAX_MA * 1000);
+#else
 	power_supply_set_current_limit(parallel_psy,
 				new_parallel_cl_ma * 1000);
+#endif
 	/* read back the real amount of current we are getting */
 	parallel_psy->get_property(parallel_psy,
 			POWER_SUPPLY_PROP_CURRENT_MAX, &pval);
@@ -2115,7 +2125,11 @@ static void smbchg_parallel_usb_enable(struct smbchg_chip *chip,
 	pr_smb(PR_STATUS, "New Total USB current = %d[%d, %d]\n",
 		total_current_ma, new_pmi_cl_ma,
 		set_parallel_cl_ma);
+#ifdef CONFIG_MACH_ZL1
+	smbchg_set_usb_current_max(chip, EON_MAX_MA);
+#else
 	smbchg_set_usb_current_max(chip, new_pmi_cl_ma);
+#endif
 
 	/* begin splitting the fast charge current */
 	fcc_ma = get_effective_result_locked(chip->fcc_votable);
@@ -2140,7 +2154,11 @@ static void smbchg_parallel_usb_enable(struct smbchg_chip *chip,
 			chip->tables.usb_ilim_ma_len);
 	main_fastchg_current_ma =
 		chip->tables.usb_ilim_ma_table[current_table_index];
+#ifdef CONFIG_MACH_ZL1
+	smbchg_set_fastchg_current_raw(chip, EON_MAX_MA);
+#else
 	smbchg_set_fastchg_current_raw(chip, main_fastchg_current_ma);
+#endif
 	pr_smb(PR_STATUS, "FCC = %d[%d, %d]\n", fcc_ma, main_fastchg_current_ma,
 					supplied_parallel_fcc_ma);
 
@@ -2167,6 +2185,13 @@ static bool smbchg_is_parallel_usb_ok(struct smbchg_chip *chip,
 		pr_smb(PR_STATUS, "Parallel charging not enabled\n");
 		return false;
 	}
+
+#ifdef CONFIG_MACH_ZL1
+	/* Only use parallel charging when connected to a Panda */
+	*ret_total_current_ma = EON_MAX_MA;
+	return chip->usb_present &&
+		chip->usb_supply_type == POWER_SUPPLY_TYPE_USB;
+#endif
 
 	kt_since_last_disable = ktime_sub(ktime_get_boottime(),
 					chip->parallel.last_disabled);
@@ -4362,6 +4387,9 @@ static int smbchg_change_usb_supply_type(struct smbchg_chip *chip,
 	if (type != POWER_SUPPLY_TYPE_UNKNOWN)
 		chip->usb_supply_type = type;
 
+#ifdef CONFIG_MACH_ZL1
+	current_limit_ma = EON_MAX_MA;
+#else
 	/*
 	 * Type-C only supports STD(900), MEDIUM(1500) and HIGH(3000) current
 	 * modes, skip all BC 1.2 current if external typec is supported.
@@ -4381,6 +4409,7 @@ static int smbchg_change_usb_supply_type(struct smbchg_chip *chip,
 		current_limit_ma = smbchg_default_hvdcp3_icl_ma;
 	else
 		current_limit_ma = smbchg_default_dcp_icl_ma;
+#endif
 
 	pr_smb(PR_STATUS, "Type %d: setting mA = %d\n",
 		type, current_limit_ma);
@@ -4692,6 +4721,10 @@ static void handle_usb_insertion(struct smbchg_chip *chip)
 		chip->parallel_charger_detected = rc ? false : true;
 		if (rc)
 			pr_debug("parallel-charger absent rc=%d\n", rc);
+#ifdef CONFIG_MACH_ZL1
+		/* Fixes very first insertion after boot charging slowly */
+		smbchg_parallel_usb_check_ok(chip);
+#endif
 	}
 
 	if (chip->parallel.avail && chip->aicl_done_irq
