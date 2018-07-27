@@ -1132,6 +1132,7 @@ static int get_prop_batt_voltage_max_design(struct smbchg_chip *chip)
 
 static int get_prop_batt_health(struct smbchg_chip *chip)
 {
+#ifndef CONFIG_MACH_ZL1
 	if (chip->batt_hot)
 		return POWER_SUPPLY_HEALTH_OVERHEAT;
 	else if (chip->batt_cold)
@@ -1141,6 +1142,7 @@ static int get_prop_batt_health(struct smbchg_chip *chip)
 	else if (chip->batt_cool)
 		return POWER_SUPPLY_HEALTH_COOL;
 	else
+#endif
 		return POWER_SUPPLY_HEALTH_GOOD;
 }
 
