@@ -1891,6 +1891,7 @@ static int msm_proxy_tx_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
 	return 0;
 }
 
+#ifdef CONFIG_SND_SOC_MSM_HDMI_CODEC_RX
 static int msm8996_hdmi_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
 					      struct snd_pcm_hw_params *params)
 {
@@ -1911,6 +1912,7 @@ static int msm8996_hdmi_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
 
 	return 0;
 }
+#endif
 
 static int legacy_msm8996_mi2s_snd_startup(struct snd_pcm_substream *substream)
 {
@@ -4795,6 +4797,7 @@ static struct snd_soc_dai_link msm8996_tasha_be_dai_links[] = {
 };
 
 static struct snd_soc_dai_link msm8996_hdmi_dai_link[] = {
+#ifdef CONFIG_SND_SOC_MSM_HDMI_CODEC_RX
 	/* HDMI BACK END DAI Link */
 	{
 		.name = LPASS_BE_HDMI,
@@ -4810,6 +4813,7 @@ static struct snd_soc_dai_link msm8996_hdmi_dai_link[] = {
 		.ignore_pmdown_time = 1,
 		.ignore_suspend = 1,
 	},
+#endif
 };
 
 static struct snd_soc_dai_link msm8996_hifi_dai_link[] = {
