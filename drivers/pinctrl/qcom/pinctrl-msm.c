@@ -166,7 +166,6 @@ static int msm_pinmux_set_mux(struct pinctrl_dev *pctldev,
 	g = &pctrl->soc->groups[group];
 	if(true == skip(g->name)){
 		pr_info("%s: skip %-8s due to TZ limitation by FP\n",__func__, g->name);
-		WARN_ON(true);
 		return 0;
 	}
 	for (i = 0; i < g->nfuncs; i++) {
