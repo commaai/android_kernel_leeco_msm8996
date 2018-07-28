@@ -1,4 +1,4 @@
-/* Copyright (c) 2014-2016, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2014-2017, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -35,11 +35,6 @@
 #include <linux/string_helpers.h>
 #include <linux/alarmtimer.h>
 #include <linux/qpnp/qpnp-revid.h>
-
-#ifdef CONFIG_MACH_ZL1
-#include <linux/reboot.h>
-static int empty_cn = 0;
-#endif
 
 /* Register offsets */
 
@@ -242,9 +237,9 @@ enum fg_mem_data_index {
 static struct fg_mem_setting settings[FG_MEM_SETTING_MAX] = {
 	/*       ID                    Address, Offset, Value*/
 	SETTING(SOFT_COLD,       0x454,   0,      100),
-	SETTING(SOFT_HOT,        0x454,   1,      450),
+	SETTING(SOFT_HOT,        0x454,   1,      400),
 	SETTING(HARD_COLD,       0x454,   2,      50),
-	SETTING(HARD_HOT,        0x454,   3,      550),
+	SETTING(HARD_HOT,        0x454,   3,      450),
 	SETTING(RESUME_SOC,      0x45C,   1,      0),
 	SETTING(BCL_LM_THRESHOLD, 0x47C,   2,      50),
 	SETTING(BCL_MH_THRESHOLD, 0x47C,   3,      752),
@@ -334,7 +329,7 @@ module_param_named(
 	battery_type, fg_batt_type, charp, S_IRUSR | S_IWUSR
 );
 
-static int fg_sram_update_period_ms = 10000;
+static int fg_sram_update_period_ms = 30000;
 module_param_named(
 	sram_update_period_ms, fg_sram_update_period_ms, int, S_IRUSR | S_IWUSR
 );
@@ -472,7 +467,6 @@ struct fg_chip {
 	struct fg_irq		mem_irq[FG_MEM_IF_IRQ_COUNT];
 	struct completion	sram_access_granted;
 	struct completion	sram_access_revoked;
-	struct completion	fg_sram_updating_done;
 	struct completion	batt_id_avail;
 	struct completion	first_soc_done;
 	struct power_supply	bms_psy;
@@ -644,6 +638,7 @@ struct fg_trans {
 	struct fg_chip *chip;
 	struct fg_log_buffer *log; /* log buffer */
 	u8 *data;	/* fg data that is read */
+	struct mutex memif_dfs_lock; /* Prevent thread concurrency */
 };
 
 struct fg_dbgfs {
@@ -1933,11 +1928,7 @@ static void fg_handle_battery_insertion(struct fg_chip *chip)
 
 static int soc_to_setpoint(int soc)
 {
-	/* this function will expand delta soc
-	 * return DIV_ROUND_CLOSEST(soc * 255, 100);
-	 * return original delta soc
-	 */
-	return soc;
+	return DIV_ROUND_CLOSEST(soc * 255, 100);
 }
 
 static void batt_to_setpoint_adc(int vbatt_mv, u8 *data)
@@ -2147,7 +2138,7 @@ static int get_monotonic_soc_raw(struct fg_chip *chip)
 }
 
 #define EMPTY_CAPACITY		0
-#define DEFAULT_CAPACITY	-1	/* reported when profile load is not be finished. */
+#define DEFAULT_CAPACITY	50
 #define MISSING_CAPACITY	100
 #define FULL_CAPACITY		100
 #define FULL_SOC_RAW		0xFF
@@ -2598,26 +2589,6 @@ out:
 	fg_relax(&chip->sanity_wakeup_source);
 }
 
-/*
-  *function for read real-time vbat and ibat from register
-  */
-static int get_real_time_prop_value(struct fg_chip *chip, unsigned int type)
-{
-	int ret = -1;
-
-	cancel_delayed_work(&chip->update_sram_data);
-	reinit_completion(&chip->fg_sram_updating_done);
-	schedule_delayed_work(&chip->update_sram_data,
-		msecs_to_jiffies(0));
-
-	/*make sure we got the latest updated data. and make sure never hold the process too long.*/
-	ret = wait_for_completion_timeout(//never interruptable
-		&chip->fg_sram_updating_done,
-		msecs_to_jiffies(10));
-
-	return fg_data[type].value;
-}
-
 #define SRAM_TIMEOUT_MS			3000
 static void update_sram_data_work(struct work_struct *work)
 {
@@ -2644,7 +2615,6 @@ wait:
 	}
 	rc = update_sram_data(chip, &resched_ms);
 
-	complete(&chip->fg_sram_updating_done); // inform the real time handler, data updating got done.
 out:
 	if (!rc)
 		schedule_delayed_work(
@@ -3271,10 +3241,10 @@ static int fg_power_get_property(struct power_supply *psy,
 		val->intval = get_sram_prop_now(chip, FG_DATA_VINT_ERR);
 		break;
 	case POWER_SUPPLY_PROP_CURRENT_NOW:
-		val->intval = get_real_time_prop_value(chip, FG_DATA_CURRENT);
+		val->intval = get_sram_prop_now(chip, FG_DATA_CURRENT);
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
-		val->intval = get_real_time_prop_value(chip, FG_DATA_VOLTAGE);
+		val->intval = get_sram_prop_now(chip, FG_DATA_VOLTAGE);
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_OCV:
 		val->intval = get_sram_prop_now(chip, FG_DATA_OCV);
@@ -6025,24 +5995,6 @@ static void check_empty_work(struct work_struct *work)
 			power_supply_changed(&chip->bms_psy);
 	}
 
-#ifdef CONFIG_MACH_ZL1
-	/*
-	 * 1.5s *40 ~ 60 s, shutdown device now
-	 */
-	if(empty_cn > 40) {
-		pr_err("low Voltage ,force shutdown now\n");
-		orderly_poweroff(true);
-	}
-
-	if(chip->soc_empty) {
-		empty_cn ++;
-		schedule_delayed_work(&chip->check_empty_work,
-			msecs_to_jiffies(FG_EMPTY_DEBOUNCE_MS));
-	}else {
-		empty_cn = 0;
-	}
-#endif
-
 out:
 	fg_relax(&chip->empty_check_wakeup_source);
 }
@@ -6904,6 +6856,7 @@ static int fg_memif_data_open(struct inode *inode, struct file *file)
 	trans->addr = dbgfs_data.addr;
 	trans->chip = dbgfs_data.chip;
 	trans->offset = trans->addr;
+	mutex_init(&trans->memif_dfs_lock);
 
 	file->private_data = trans;
 	return 0;
@@ -6915,6 +6868,7 @@ static int fg_memif_dfs_close(struct inode *inode, struct file *file)
 
 	if (trans && trans->log && trans->data) {
 		file->private_data = NULL;
+		mutex_destroy(&trans->memif_dfs_lock);
 		kfree(trans->log);
 		kfree(trans->data);
 		kfree(trans);
@@ -7072,10 +7026,13 @@ static ssize_t fg_memif_dfs_reg_read(struct file *file, char __user *buf,
 	size_t ret;
 	size_t len;
 
+	mutex_lock(&trans->memif_dfs_lock);
 	/* Is the the log buffer empty */
 	if (log->rpos >= log->wpos) {
-		if (get_log_data(trans) <= 0)
-			return 0;
+		if (get_log_data(trans) <= 0) {
+			len = 0;
+			goto unlock_mutex;
+		}
 	}
 
 	len = min(count, log->wpos - log->rpos);
@@ -7083,7 +7040,8 @@ static ssize_t fg_memif_dfs_reg_read(struct file *file, char __user *buf,
 	ret = copy_to_user(buf, &log->data[log->rpos], len);
 	if (ret == len) {
 		pr_err("error copy sram register values to user\n");
-		return -EFAULT;
+		len = -EFAULT;
+		goto unlock_mutex;
 	}
 
 	/* 'ret' is the number of bytes not copied */
@@ -7091,6 +7049,9 @@ static ssize_t fg_memif_dfs_reg_read(struct file *file, char __user *buf,
 
 	*ppos += len;
 	log->rpos += len;
+
+unlock_mutex:
+	mutex_unlock(&trans->memif_dfs_lock);
 	return len;
 }
 
@@ -7111,14 +7072,20 @@ static ssize_t fg_memif_dfs_reg_write(struct file *file, const char __user *buf,
 	int cnt = 0;
 	u8  *values;
 	size_t ret = 0;
+	char *kbuf;
+	u32 offset;
 
 	struct fg_trans *trans = file->private_data;
-	u32 offset = trans->offset;
+
+	mutex_lock(&trans->memif_dfs_lock);
+	offset = trans->offset;
 
 	/* Make a copy of the user data */
-	char *kbuf = kmalloc(count + 1, GFP_KERNEL);
-	if (!kbuf)
-		return -ENOMEM;
+	kbuf = kmalloc(count + 1, GFP_KERNEL);
+	if (!kbuf) {
+		ret = -ENOMEM;
+		goto unlock_mutex;
+	}
 
 	ret = copy_from_user(kbuf, buf, count);
 	if (ret == count) {
@@ -7157,6 +7124,8 @@ static ssize_t fg_memif_dfs_reg_write(struct file *file, const char __user *buf,
 
 free_buf:
 	kfree(kbuf);
+unlock_mutex:
+	mutex_unlock(&trans->memif_dfs_lock);
 	return ret;
 }
 
@@ -7165,77 +7134,6 @@ static const struct file_operations fg_memif_dfs_reg_fops = {
 	.release	= fg_memif_dfs_close,
 	.read		= fg_memif_dfs_reg_read,
 	.write		= fg_memif_dfs_reg_write,
-};
-
-#define ADDR_OF_FG_REGS_START	0x400
-#define COUNT_OF_ALL_FG_REGS	0x200
-static int fg_regs_open(struct inode *inode, struct file *file)
-{
-	struct fg_log_buffer *log;
-	struct fg_trans *trans;
-	u8 *data_buf;
-
-	size_t logbufsize = SZ_4K;
-	size_t databufsize = SZ_4K;
-
-	if (!dbgfs_data.chip) {
-		pr_err("Not initialized data\n");
-		return -EINVAL;
-	}
-
-	/* Per file "transaction" data */
-	trans = kzalloc(sizeof(*trans), GFP_KERNEL);
-	if (!trans) {
-		pr_err("Unable to allocate memory for transaction data\n");
-		return -ENOMEM;
-	}
-
-	/* Allocate log buffer */
-	log = kzalloc(logbufsize, GFP_KERNEL);
-
-	if (!log) {
-		kfree(trans);
-		pr_err("Unable to allocate memory for log buffer\n");
-		return -ENOMEM;
-	}
-
-	log->rpos = 0;
-	log->wpos = 0;
-	log->len = logbufsize - sizeof(*log);
-
-	/* Allocate data buffer */
-	data_buf = kzalloc(databufsize, GFP_KERNEL);
-
-	if (!data_buf) {
-		kfree(trans);
-		kfree(log);
-		pr_err("Unable to allocate memory for data buffer\n");
-		return -ENOMEM;
-	}
-
-	trans->log		= log;
-	trans->data		= data_buf;
-	trans->cnt		= COUNT_OF_ALL_FG_REGS;
-	trans->addr		= ADDR_OF_FG_REGS_START;
-	trans->chip		= dbgfs_data.chip;
-	trans->offset	= trans->addr;
-
-	file->private_data = trans;
-	return 0;
-}
-
-static ssize_t fg_regs_write(struct file *file, const char __user *buf,
-			size_t count, loff_t *ppos)
-{
-	/* To be Done */
-	return 0;
-}
-
-static const struct file_operations fg_regs_sys_ops = {
-	.open		= fg_regs_open,
-	.release	= fg_memif_dfs_close,
-	.read		= fg_memif_dfs_reg_read,
-	.write		= fg_regs_write,
 };
 
 /**
@@ -7324,14 +7222,6 @@ int fg_dfs_create(struct fg_chip *chip)
 							&fg_memif_dfs_reg_fops);
 	if (!file) {
 		pr_err("error creating 'data' entry\n");
-		goto err_remove_fs;
-	}
-
-	/* create interface for dump all fg_regs. */
-	file = debugfs_create_file("fg_regs", S_IRUGO | S_IWUSR, root, chip,
-							&fg_regs_sys_ops);
-	if (!file) {
-		pr_err("error creating 'fg_regs' entry\n");
 		goto err_remove_fs;
 	}
 
@@ -8205,7 +8095,6 @@ static int fg_probe(struct spmi_device *spmi)
 			fg_cap_learning_alarm_cb);
 	init_completion(&chip->sram_access_granted);
 	init_completion(&chip->sram_access_revoked);
-	init_completion(&chip->fg_sram_updating_done);
 	complete_all(&chip->sram_access_revoked);
 	init_completion(&chip->batt_id_avail);
 	init_completion(&chip->first_soc_done);
