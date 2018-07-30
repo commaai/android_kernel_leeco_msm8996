@@ -6333,6 +6333,7 @@ static irqreturn_t usbin_uv_handler(int irq, void *_chip)
 	if (chip->hvdcp_3_det_ignore_uv)
 		goto out;
 
+#ifndef CONFIG_MACH_ZL1
 	if ((reg & USBIN_UV_BIT) && (reg & USBIN_SRC_DET_BIT)) {
 		pr_smb(PR_STATUS, "Very weak charger detected\n");
 		chip->very_weak_charger = true;
@@ -6372,6 +6373,7 @@ static irqreturn_t usbin_uv_handler(int irq, void *_chip)
 			pr_err("Couldn't set health on usb psy rc:%d\n", rc);
 		schedule_work(&chip->usb_set_online_work);
 	}
+#endif
 
 	smbchg_wipower_check(chip);
 out:
