@@ -704,6 +704,9 @@ static enum pwr_path_type smbchg_get_pwr_path(struct smbchg_chip *chip)
 #define USBID_GND_THRESHOLD		0x495
 static bool is_otg_present_schg(struct smbchg_chip *chip)
 {
+#ifdef CONFIG_MACH_ZL1
+	return false;
+#else
 	int rc;
 	u8 reg;
 	u8 usbid_reg[2];
@@ -760,6 +763,7 @@ static bool is_otg_present_schg(struct smbchg_chip *chip)
 	pr_smb(PR_STATUS, "RID_STS = %02x\n", reg);
 
 	return (reg & RID_MASK) == 0;
+#endif
 }
 
 #define RID_GND_DET_STS			BIT(2)
@@ -1808,6 +1812,7 @@ static int smbchg_get_min_parallel_current_ma(struct smbchg_chip *chip)
 
 static bool is_hvdcp_present(struct smbchg_chip *chip)
 {
+#ifndef CONFIG_MACH_ZL1
 	int rc;
 	u8 reg, hvdcp_sel;
 
@@ -1830,6 +1835,7 @@ static bool is_hvdcp_present(struct smbchg_chip *chip)
 
 	if ((reg & hvdcp_sel) && is_usb_present(chip))
 		return true;
+#endif
 
 	return false;
 }
