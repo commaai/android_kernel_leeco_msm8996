@@ -941,6 +941,10 @@ static int get_prop_batt_status(struct smbchg_chip *chip)
 	if (reg & BAT_TCC_REACHED_BIT)
 		return POWER_SUPPLY_STATUS_FULL;
 
+#ifdef CONFIG_MACH_ZL1
+	return POWER_SUPPLY_STATUS_CHARGING;
+#endif
+
 	chg_inhibit = reg & CHG_INHIBIT_BIT;
 	if (chg_inhibit)
 		return POWER_SUPPLY_STATUS_FULL;
