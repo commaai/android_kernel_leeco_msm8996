@@ -128,6 +128,60 @@ void final_putname(struct filename *name)
 	}
 }
 
+#ifdef CONFIG_MACH_ZL1
+struct lepro_match {
+	const char *match_name;
+	const char *lepro_name;
+};
+
+static const struct lepro_match lepro_files[] = {
+	{
+		.match_name = "/system/bin/sensors.qcom",
+		.lepro_name = "/system/lepro/bin/sensors.qcom"
+	},
+	{
+		.match_name = "/etc/sensors/sensor_def_qcomdev.conf",
+		.lepro_name = "/system/lepro/etc/sensors/sensor_def_qcomdev.conf"
+	},
+	{
+		.match_name = "/system/lib64/hw/sensors.msm8996.so",
+		.lepro_name = "/system/lepro/lib64/hw/sensors.msm8996.so"
+	},
+	{
+		.match_name = "/system/lib64/libsensorservice.so",
+		.lepro_name = "/system/lepro/lib64/libsensorservice.so"
+	},
+	{
+		.match_name = "/vendor/lib64/hw/activity_recognition.msm8996.so",
+		.lepro_name = "/system/lepro/vendor/lib64/hw/activity_recognition.msm8996.so"
+	},
+	{
+		.match_name = "/vendor/lib64/libsensor1.so",
+		.lepro_name = "/system/lepro/vendor/lib64/libsensor1.so"
+	},
+	{
+		.match_name = "/vendor/lib64/libsensor_reg.so",
+		.lepro_name = "/system/lepro/vendor/lib64/libsensor_reg.so"
+	},
+	{
+		.match_name = "/vendor/lib64/sensors.ssc.so",
+		.lepro_name = "/system/lepro/vendor/lib64/sensors.ssc.so"
+	}
+};
+
+static inline void get_lepro_path(char *name)
+{
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(lepro_files); i++) {
+		if (!strcmp(name, lepro_files[i].match_name)) {
+			strcpy(name, lepro_files[i].lepro_name);
+			break;
+		}
+	}
+}
+#endif
+
 #define EMBEDDED_NAME_MAX	(PATH_MAX - sizeof(struct filename))
 
 static struct filename *
@@ -161,6 +215,10 @@ recopy:
 		err = ERR_PTR(len);
 		goto error;
 	}
+
+#ifdef CONFIG_MACH_ZL1
+	get_lepro_path(kname);
+#endif
 
 	/*
 	 * Uh-oh. We have a name that's approaching PATH_MAX. Allocate a
