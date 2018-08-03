@@ -2354,6 +2354,7 @@ EXPORT_SYMBOL(pi5usb_set_msm_usb_host_mode);
 
 static int _msm_usb_vbus_on(struct dwc3_msm *_mdwc)
 {
+#ifndef CONFIG_MACH_ZL1
 	struct dwc3_msm	*mdwc = (_mdwc ? _mdwc : _msm_dwc);
 	int ret = 0;
   pr_err("_msm_usb_vbus_on called\n");
@@ -2370,12 +2371,14 @@ static int _msm_usb_vbus_on(struct dwc3_msm *_mdwc)
 		mdwc->vbus_on = 1;
 	else
 		dev_info(mdwc->dev, "VBUS ON FAILED %d\n", ret);
+#endif
 
 	return 0;
 }
 
 static int _msm_usb_vbus_off(struct dwc3_msm *_mdwc)
 {
+#ifndef CONFIG_MACH_ZL1
 	struct dwc3_msm	*mdwc = (_mdwc ? _mdwc : _msm_dwc);
 	int ret = 0;
   pr_err("_msm_usb_vbus_off called\n");
@@ -2392,6 +2395,7 @@ static int _msm_usb_vbus_off(struct dwc3_msm *_mdwc)
 		mdwc->vbus_on = 0;
 	else
 		dev_info(mdwc->dev, "VBUS OFF FAILED %d\n", ret);
+#endif
 
 	return 0;
 
