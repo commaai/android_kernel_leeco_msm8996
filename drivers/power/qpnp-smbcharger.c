@@ -6366,10 +6366,13 @@ static bool smbchg_is_throttled(struct smbchg_chip *chip)
 {
 	int temp = get_prop_batt_temp(chip);
 
-	if (chip->throttled)
-		chip->throttled = temp <= TEMP_UNTHROTTLE;
-	else
-		chip->throttled = temp >= TEMP_THROTTLE;
+	if (chip->throttled) {
+		if (temp <= TEMP_UNTHROTTLE)
+			chip->throttled = false;
+	} else {
+		if (temp >= TEMP_THROTTLE)
+			chip->throttled = true;
+	}
 
 	return chip->throttled;
 }
