@@ -159,9 +159,6 @@ enum tasha_sido_voltage {
 	SIDO_VOLTAGE_NOMINAL_MV = 1100,
 };
 
-extern bool letv_typec_plug_state;
-extern bool letv_typec_4_pole;
-
 static enum codec_variant codec_ver;
 
 static int dig_core_collapse_enable = 1;
@@ -651,12 +648,6 @@ static struct wcd_mbhc_register
 			  0, 0, 0, 0),
 	WCD_MBHC_REGISTER("WCD_MBHC_MUX_CTL",
 			  WCD9335_MBHC_CTL_2, 0x70, 4, 0),
-
-	/* add for headset mic swap from IN2P to IN3P automaticly*/
-	WCD_MBHC_REGISTER("WCD_MBHC_HS_VREF_INP",
-			  WCD9335_MBHC_CTL_2, 0x70, 4, 0),
-	WCD_MBHC_REGISTER("WCD_MBHC_AMIC2_HOLD_EN",
-			  WCD9335_ANA_AMIC2, 0x20, 5, 0),
 };
 
 static const struct wcd_mbhc_intr intr_ids = {
@@ -1397,21 +1388,18 @@ static int tasha_micbias_control(struct snd_soc_codec *codec,
 
 	switch (req) {
 	case MICB_PULLUP_ENABLE:
-		pr_info("micb_pullup enable, micb_num(%d)!!\n", micb_num);
 		tasha->pullup_ref[micb_index]++;
 		if ((tasha->pullup_ref[micb_index] == 1) &&
 		    (tasha->micb_ref[micb_index] == 0))
 			snd_soc_update_bits(codec, micb_reg, 0xC0, 0x80);
 		break;
 	case MICB_PULLUP_DISABLE:
-		pr_info("micb_pullup disable, micb_num(%d)!!\n", micb_num);
 		tasha->pullup_ref[micb_index]--;
 		if ((tasha->pullup_ref[micb_index] == 0) &&
 		    (tasha->micb_ref[micb_index] == 0))
 			snd_soc_update_bits(codec, micb_reg, 0xC0, 0x00);
 		break;
 	case MICB_ENABLE:
-		pr_info("micb enable, micb_num(%d)!!\n", micb_num);
 		tasha->micb_ref[micb_index]++;
 		if (tasha->micb_ref[micb_index] == 1) {
 			snd_soc_update_bits(codec, micb_reg, 0xC0, 0x40);
@@ -1426,28 +1414,14 @@ static int tasha_micbias_control(struct snd_soc_codec *codec,
 	case MICB_DISABLE:
 		tasha->micb_ref[micb_index]--;
 		if ((tasha->micb_ref[micb_index] == 0) &&
-		    (tasha->pullup_ref[micb_index] > 0)) {
-			if (letv_typec_4_pole && letv_typec_plug_state &&
-				(micb_num == MIC_BIAS_2)) {
-				snd_soc_update_bits(codec, micb_reg, 0xC0, 0xC0);
-				pr_info("1: letv_headset still pluged!!\n");
-			} else {
-				pr_info("1: micb disable, micb_num(%d)!!\n", micb_num);
-				snd_soc_update_bits(codec, micb_reg, 0xC0, 0x80);
-			}
-		} else if ((tasha->micb_ref[micb_index] == 0) &&
+		    (tasha->pullup_ref[micb_index] > 0))
+			snd_soc_update_bits(codec, micb_reg, 0xC0, 0x80);
+		else if ((tasha->micb_ref[micb_index] == 0) &&
 			 (tasha->pullup_ref[micb_index] == 0)) {
 			if (pre_off_event)
 				blocking_notifier_call_chain(&tasha->notifier,
 						pre_off_event, &tasha->mbhc);
-			if (letv_typec_4_pole && letv_typec_plug_state &&
-				(micb_num == MIC_BIAS_2)) {
-				snd_soc_update_bits(codec, micb_reg, 0xC0, 0x40);
-				pr_info("2: letv_headset still pluged!!\n");
-			} else {
-				pr_info("2: micb disable, micb_num(%d)!!\n", micb_num);
-				snd_soc_update_bits(codec, micb_reg, 0xC0, 0x00);
-			}
+			snd_soc_update_bits(codec, micb_reg, 0xC0, 0x00);
 			if (post_off_event)
 				blocking_notifier_call_chain(&tasha->notifier,
 						post_off_event, &tasha->mbhc);
@@ -2138,7 +2112,7 @@ static int tasha_hph_impedance_get(struct snd_kcontrol *kcontrol,
 	mc = (struct soc_multi_mixer_control *)(kcontrol->private_value);
 	hphr = mc->shift;
 	wcd_mbhc_get_impedance(&priv->mbhc, &zl, &zr);
-	pr_info("%s: zl=%u(ohms), zr=%u(ohms)\n", __func__, zl, zr);
+	dev_dbg(codec->dev, "%s: zl=%u(ohms), zr=%u(ohms)\n", __func__, zl, zr);
 	ucontrol->value.integer.value[0] = hphr ? zr : zl;
 
 	return 0;
@@ -7444,6 +7418,13 @@ static int tasha_mad_input_put(struct snd_kcontrol *kcontrol,
 
 	tasha_mad_input = ucontrol->value.integer.value[0];
 
+	if (tasha_mad_input >= ARRAY_SIZE(tasha_conn_mad_text)) {
+		dev_err(codec->dev,
+			"%s: tasha_mad_input = %d out of bounds\n",
+			__func__, tasha_mad_input);
+		return -EINVAL;
+	}
+
 	if (!strcmp(tasha_conn_mad_text[tasha_mad_input], "NOTUSED1") ||
 	    !strcmp(tasha_conn_mad_text[tasha_mad_input], "NOTUSED2") ||
 	    !strcmp(tasha_conn_mad_text[tasha_mad_input], "NOTUSED3") ||
@@ -7617,45 +7598,6 @@ static int tasha_pinctl_mode_put(struct snd_kcontrol *kcontrol,
 
 	dev_dbg(codec->dev, "%s: reg=0x%x mask=0x%x val=%d reg=0x%x val=%d\n",
 			__func__, ctl_reg, mask, ctl_val, cfg_reg, cfg_val);
-
-	return 0;
-}
-
-static int wcd_swr_low_power_get(struct snd_kcontrol *kcontrol,
-	struct snd_ctl_elem_value *ucontrol)
-{
-	return 0;
-}
-
-static int wcd_swr_low_power_put(struct snd_kcontrol *kcontrol,
-	struct snd_ctl_elem_value *ucontrol)
-{
-	struct snd_soc_codec *codec = snd_soc_kcontrol_codec(kcontrol);
-	struct tasha_priv *tasha = snd_soc_codec_get_drvdata(codec);
-
-	if (1 == ucontrol->value.integer.value[0]) {
-		pr_info("%s, enable!\n", __func__);
-		wcd9xxx_reg_update_bits(
-			&tasha->wcd9xxx->core_res,
-			WCD9335_TEST_DEBUG_NPL_DLY_TEST_1,
-			0x90, 0x10);
-		msleep(10);
-		wcd9xxx_reg_update_bits(
-			&tasha->wcd9xxx->core_res,
-			WCD9335_TEST_DEBUG_NPL_DLY_TEST_1,
-			0x90, 0x90);
-	} else {
-		pr_info("%s, disable!\n", __func__);
-		wcd9xxx_reg_update_bits(
-			&tasha->wcd9xxx->core_res,
-			WCD9335_TEST_DEBUG_NPL_DLY_TEST_1,
-			0x90, 0x10);
-		msleep(10);
-		wcd9xxx_reg_update_bits(
-			&tasha->wcd9xxx->core_res,
-			WCD9335_TEST_DEBUG_NPL_DLY_TEST_1,
-			0x90, 0x90);
-	}
 
 	return 0;
 }
@@ -8230,9 +8172,6 @@ static const struct snd_kcontrol_new tasha_snd_controls[] = {
 	SOC_ENUM_EXT("GSM mode Enable", tasha_vbat_gsm_mode_enum,
 			tasha_vbat_gsm_mode_func_get,
 			tasha_vbat_gsm_mode_func_put),
-
-	SOC_SINGLE_EXT("WCD9335_SWR_LOW_POWER", SND_SOC_NOPM, 23, 1, 0,
-		       wcd_swr_low_power_get, wcd_swr_low_power_put),
 };
 
 static int tasha_put_dec_enum(struct snd_kcontrol *kcontrol,
@@ -12831,7 +12770,6 @@ static int tasha_codec_probe(struct snd_soc_codec *codec)
 	int i, ret;
 	void *ptr = NULL;
 	struct regulator *supply;
-	pr_info("%s:enter\n", __func__);
 
 	control = dev_get_drvdata(codec->dev->parent);
 
