@@ -19,6 +19,12 @@
 #include <linux/notifier.h>
 #include <linux/types.h>
 
+#ifdef CONFIG_MACH_ZL1
+/* SMB1351 range is [100, 4500] */
+#define EON_MIN_MA 100
+#define EON_MAX_MA 2400
+#endif
+
 /*
  * All voltages, currents, charges, energies, time and temperatures in uV,
  * µA, µAh, µWh, seconds and tenths of degree Celsius unless otherwise

@@ -278,8 +278,8 @@ struct smbchg_chip {
 	struct votable			*hw_aicl_rerun_enable_indirect_votable;
 	struct votable			*aicl_deglitch_short_votable;
 #ifdef CONFIG_MACH_ZL1
-	struct delayed_work		heartbeat_work;
-	bool				throttled;
+	struct power_supply		*parallel_psy;
+	struct mutex			parallel_lock;
 #endif
 };
 
@@ -5646,6 +5646,42 @@ static int smbchg_get_iusb(struct smbchg_chip *chip)
 	return iusb_ua;
 }
 
+#ifdef CONFIG_MACH_ZL1
+static void smbchg_set_parallel_ma(struct smbchg_chip *chip, int current_ma)
+{
+	union power_supply_propval pval = { .intval = current_ma * 1000 };
+
+	mutex_lock(&chip->parallel_lock);
+	power_supply_set_current_limit(chip->parallel_psy, pval.intval);
+	chip->parallel_psy->set_property(chip->parallel_psy,
+		POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX, &pval);
+	mutex_unlock(&chip->parallel_lock);
+}
+
+static void smbchg_enable_charger(struct smbchg_chip *chip)
+{
+	smbchg_usb_suspend(chip, false);
+	smbchg_charging_en(chip, true);
+	power_supply_set_present(chip->parallel_psy, true);
+	smbchg_set_parallel_ma(chip, EON_MAX_MA);
+
+	/* Kill regular charging and only rely on parallel charging */
+	smbchg_sec_masked_write(chip, chip->chgr_base + FCC_CFG, FCC_MASK, 0);
+	smbchg_sec_masked_write(chip, chip->usb_chgpth_base + IL_CFG,
+		USBIN_INPUT_MASK, 0);
+
+	power_supply_changed(&chip->batt_psy);
+}
+
+static void smbchg_disable_charger(struct smbchg_chip *chip)
+{
+	power_supply_changed(&chip->batt_psy);
+	power_supply_set_present(chip->parallel_psy, false);
+	smbchg_charging_en(chip, true);
+	smbchg_usb_suspend(chip, true);
+}
+#endif
+
 static enum power_supply_property smbchg_battery_properties[] = {
 	POWER_SUPPLY_PROP_STATUS,
 	POWER_SUPPLY_PROP_PRESENT,
@@ -5674,6 +5710,9 @@ static enum power_supply_property smbchg_battery_properties[] = {
 	POWER_SUPPLY_PROP_RERUN_AICL,
 	POWER_SUPPLY_PROP_RESTRICTED_CHARGING,
 	POWER_SUPPLY_PROP_ALLOW_HVDCP3,
+#ifdef CONFIG_MACH_ZL1
+	POWER_SUPPLY_PROP_CURRENT_MAX,
+#endif
 };
 
 static int smbchg_battery_set_property(struct power_supply *psy,
@@ -5685,6 +5724,8 @@ static int smbchg_battery_set_property(struct power_supply *psy,
 				struct smbchg_chip, batt_psy);
 
 #ifdef CONFIG_MACH_ZL1
+	if (prop == POWER_SUPPLY_PROP_CURRENT_MAX)
+		smbchg_set_parallel_ma(chip, val->intval / 1000);
 	return 0;
 #endif
 
@@ -6357,73 +6398,6 @@ out:
 	return IRQ_HANDLED;
 }
 
-#ifdef CONFIG_MACH_ZL1
-#define EON_MAX_MA		2100
-#define HEARTBEAT_INTERVAL_MS	(6 * MSEC_PER_SEC)
-#define TEMP_THROTTLE		475
-#define TEMP_UNTHROTTLE		450
-static bool smbchg_is_throttled(struct smbchg_chip *chip)
-{
-	int temp = get_prop_batt_temp(chip);
-
-	if (chip->throttled) {
-		if (temp <= TEMP_UNTHROTTLE)
-			chip->throttled = false;
-	} else {
-		if (temp >= TEMP_THROTTLE)
-			chip->throttled = true;
-	}
-
-	return chip->throttled;
-}
-
-static void smbchg_set_parallel_ma(struct power_supply *parallel_psy,
-	int current_ma)
-{
-	union power_supply_propval pval = { .intval = current_ma * 1000 };
-
-	power_supply_set_current_limit(parallel_psy, pval.intval);
-	parallel_psy->set_property(parallel_psy,
-		POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX, &pval);
-}
-
-static void smbchg_heartbeat_work(struct work_struct *work)
-{
-	struct smbchg_chip *chip = container_of(to_delayed_work(work),
-		typeof(*chip), heartbeat_work);
-
-	smbchg_charging_en(chip, !smbchg_is_throttled(chip));
-	power_supply_changed(&chip->batt_psy);
-
-	schedule_delayed_work(&chip->heartbeat_work,
-		msecs_to_jiffies(HEARTBEAT_INTERVAL_MS));
-}
-
-static void smbchg_enable_charger(struct smbchg_chip *chip)
-{
-	struct power_supply *parallel_psy = get_parallel_psy(chip);
-
-	smbchg_usb_suspend(chip, false);
-	power_supply_set_present(parallel_psy, true);
-	smbchg_set_parallel_ma(parallel_psy, EON_MAX_MA);
-
-	/* Kill regular charging and only rely on parallel charging */
-	smbchg_sec_masked_write(chip, chip->chgr_base + FCC_CFG, FCC_MASK, 0);
-	smbchg_sec_masked_write(chip, chip->usb_chgpth_base + IL_CFG,
-		USBIN_INPUT_MASK, 0);
-
-	schedule_delayed_work(&chip->heartbeat_work, 0);
-}
-
-static void smbchg_disable_charger(struct smbchg_chip *chip)
-{
-	cancel_delayed_work_sync(&chip->heartbeat_work);
-	power_supply_changed(&chip->batt_psy);
-	smbchg_usb_suspend(chip, true);
-	power_supply_set_present(get_parallel_psy(chip), false);
-}
-#endif
-
 /**
  * src_detect_handler() - this is called on rising edge when USB charger type
  *			is detected and on falling edge when USB voltage falls
@@ -6438,6 +6412,7 @@ static irqreturn_t src_detect_handler(int irq, void *_chip)
 	struct smbchg_chip *chip = _chip;
 
 	chip->usb_present = is_src_detect_high(chip);
+	power_supply_set_present(chip->usb_psy, chip->usb_present);
 	if (chip->usb_present)
 		smbchg_enable_charger(chip);
 	else
@@ -7572,16 +7547,15 @@ static int smbchg_request_irqs(struct smbchg_chip *chip)
 		}
 
 #ifdef CONFIG_MACH_ZL1
-		if (subtype == SMBCHG_USB_CHGPTH_SUBTYPE ||
-			subtype == SMBCHG_LITE_USB_CHGPTH_SUBTYPE) {
+		if (subtype == SMBCHG_USB_CHGPTH_SUBTYPE) {
 			REQUEST_IRQ(chip, spmi_resource, chip->src_detect_irq,
 				"usbin-src-det",
 				src_detect_handler, flags, rc);
 			enable_irq_wake(chip->src_detect_irq);
 			break;
-		} else {
-			continue;
 		}
+
+		continue;
 #endif
 
 		switch (subtype) {
@@ -7971,12 +7945,24 @@ static int smbchg_probe(struct spmi_device *spmi)
 	struct power_supply *usb_psy, *typec_psy = NULL;
 	struct qpnp_vadc_chip *vadc_dev = NULL, *vchg_vadc_dev = NULL;
 	const char *typec_psy_name;
+#ifdef CONFIG_MACH_ZL1
+	struct power_supply *parallel_psy;
+#endif
 
 	usb_psy = power_supply_get_by_name("usb");
 	if (!usb_psy) {
 		pr_smb(PR_STATUS, "USB supply not found, deferring probe\n");
 		return -EPROBE_DEFER;
 	}
+
+#ifdef CONFIG_MACH_ZL1
+	parallel_psy = power_supply_get_by_name("usb-parallel");
+	if (!parallel_psy) {
+		pr_smb(PR_STATUS,
+			"Parallel supply not found, deferring probe\n");
+		return -EPROBE_DEFER;
+	}
+#endif
 
 	if (of_property_read_bool(spmi->dev.of_node, "qcom,external-typec")) {
 		/* read the type power supply name */
@@ -8088,7 +8074,8 @@ static int smbchg_probe(struct spmi_device *spmi)
 		return PTR_ERR(chip->aicl_deglitch_short_votable);
 
 #ifdef CONFIG_MACH_ZL1
-	INIT_DELAYED_WORK(&chip->heartbeat_work, smbchg_heartbeat_work);
+	chip->parallel_psy = parallel_psy;
+	mutex_init(&chip->parallel_lock);
 #endif
 	INIT_WORK(&chip->usb_set_online_work, smbchg_usb_update_online_work);
 	INIT_DELAYED_WORK(&chip->parallel_en_work,
