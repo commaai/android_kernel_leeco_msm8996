@@ -1834,7 +1834,7 @@
 		clock-frequency = <32768>;
 	};
 
-	msm_imem: qcom,msm-imem@66bf000 {
+	qcom,msm-imem@66bf000 {
 		compatible = "qcom,msm-imem";
 		reg = <0x66bf000 0x1000>; /* Address and size of IMEM */
 		ranges = <0x0 0x66bf000 0x1000>;
@@ -1844,11 +1844,6 @@
 		mem_dump_table@10 {
 			compatible = "qcom,msm-imem-mem_dump_table";
 			reg = <0x10 8>;
-		};
-
-		dload-type@1c {
-			compatible = "qcom,msm-imem-dload-type";
-			reg = <0x1c 4>;
 		};
 
 		restart_reason@65c {
@@ -1864,10 +1859,6 @@
 		pil@94c {
 			compatible = "qcom,msm-imem-pil";
 			reg = <0x94c 200>;
-		};
-		sleep_light@b38 {
-			compatible = "qcom,msm-imem-sleep_light";
-			reg = <0xb38 8>;
 		};
 	};
 
@@ -1961,7 +1952,6 @@
 		interrupt-names = "hs_phy_irq", "ss_phy_irq", "pwr_event_irq";
 
 		USB3_GDSC-supply = <&gdsc_usb30>;
-		qcom,vbus_set_by_cclogic;
 		qcom,usb-dbm = <&dbm_1p5>;
 		qcom,msm-bus,name = "usb3";
 		qcom,msm-bus,num-cases = <2>;
@@ -2602,6 +2592,7 @@
 			 <&clock_gcc clk_gcc_ce1_ahb_m_clk>,
 			 <&clock_gcc clk_gcc_ce1_axi_m_clk>;
 		qcom,ce-opp-freq = <171430000>;
+		qcom,qsee-reentrancy-support = <2>;
 	};
 
 	qcom,qbt1000 {
@@ -2806,14 +2797,6 @@
 			qcom,sensor-name = "tsens_tz_sensor20";
 			qcom,scaling-factor = <10>;
 		};
-		sensor_information36: qcom,sensor-information-36 {
-                        qcom,sensor-type =  "adc";
-                        qcom,sensor-name = "xo_therm_buf";
-                };
-		sensor_information37: qcom,sensor-information-37 {
-                        qcom,sensor-type =  "adc";
-                        qcom,sensor-name = "battery";
-                };
 	};
 
 	mitigation_profile0: qcom,limit_info-0 {
@@ -2899,7 +2882,7 @@
 			qcom,mitigation-freq-khz = <576000>;
 			qcom,vph-high-threshold-uv = <3500000>;
 			qcom,vph-low-threshold-uv = <3300000>;
-			qcom,soc-low-threshold = <5>;
+			qcom,soc-low-threshold = <10>;
 			qcom,thermal-handle = <&msm_thermal_freq>;
 		};
 	};

@@ -208,11 +208,8 @@ int32_t msm_camera_qup_i2c_write(struct msm_camera_i2c_client *client,
 	} else if (data_type == MSM_CAMERA_I2C_WORD_DATA) {
 		buf[len] = data >> BITS_PER_BYTE;
 		buf[len+1] = data;
-        if(0x82 == addr)
-        {
-            printk("===wangyu Byte %d: 0x%x\n", len, buf[len]);
-            printk("===wangyu Byte %d: 0x%x\n", len+1, buf[len+1]);
-        }
+		S_I2C_DBG("Byte %d: 0x%x\n", len, buf[len]);
+		S_I2C_DBG("Byte %d: 0x%x\n", len+1, buf[len+1]);
 		len += 2;
 	}
 	rc = msm_camera_qup_i2c_txdata(client, buf, len);
@@ -442,7 +439,7 @@ int32_t msm_camera_qup_i2c_poll(struct msm_camera_i2c_client *client,
 	uint32_t addr, uint16_t data,
 	enum msm_camera_i2c_data_type data_type, uint32_t delay_ms)
 {
-	int32_t rc = 0;
+	int32_t rc;
 	int i;
 	S_I2C_DBG("%s: addr: 0x%x data: 0x%x dt: %d\n",
 		__func__, addr, data, data_type);

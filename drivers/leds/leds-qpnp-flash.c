@@ -2443,7 +2443,7 @@ static int qpnp_flash_led_probe(struct spmi_device *spmi)
 	struct qpnp_flash_led *led;
 	struct resource *flash_resource;
 	struct device_node *node, *temp;
-	struct dentry *root = NULL, *file;
+	struct dentry *root, *file;
 	int rc, i = 0, j, num_leds = 0;
 	u32 val;
 

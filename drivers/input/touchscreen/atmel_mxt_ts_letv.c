@@ -4837,11 +4837,6 @@ static int mxt_probe(struct i2c_client *client,
 	}
 	data->cdev.name = "touchpanel";
 	data->cdev.groups = attr_groups;
-	 error = letv_classdev_register(&client->dev,&data->cdev);
-	 if(error){
-		dev_err(&client->dev, "Failure %d creating classdev\n",
-			error);
-	}
 	sysfs_bin_attr_init(&data->mem_access_attr);
 	data->mem_access_attr.attr.name = "mem_access";
 	data->mem_access_attr.attr.mode = S_IRUGO | S_IWUSR;

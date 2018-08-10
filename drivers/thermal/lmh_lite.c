@@ -276,7 +276,7 @@ enable_exit:
 }
 
 static void lmh_update(struct lmh_driver_data *lmh_dat,
-	struct lmh_sensor_data *lmh_sensor, bool is_from_isr)
+	struct lmh_sensor_data *lmh_sensor)
 {
 	if (lmh_sensor->last_read_value > 0 && !(lmh_dat->intr_status_val
 		& BIT(lmh_sensor->sensor_sw_id))) {
@@ -295,10 +295,10 @@ static void lmh_update(struct lmh_driver_data *lmh_dat,
 		lmh_data->intr_status_val ^= BIT(lmh_sensor->sensor_sw_id);
 	}
 	lmh_sensor->ops.new_value_notify(&lmh_sensor->ops,
-		lmh_sensor->last_read_value, is_from_isr);
+		lmh_sensor->last_read_value);
 }
 
-static void lmh_read_and_update(struct lmh_driver_data *lmh_dat, bool is_from_isr)
+static void lmh_read_and_update(struct lmh_driver_data *lmh_dat)
 {
 	int ret = 0, idx = 0;
 	struct lmh_sensor_data *lmh_sensor = NULL;
@@ -361,7 +361,7 @@ static void lmh_read_and_update(struct lmh_driver_data *lmh_dat, bool is_from_is
 read_exit:
 	mutex_unlock(&lmh_sensor_read);
 	list_for_each_entry(lmh_sensor, &lmh_sensor_list, list_ptr)
-		lmh_update(lmh_dat, lmh_sensor, is_from_isr);
+		lmh_update(lmh_dat, lmh_sensor);
 
 	return;
 }
@@ -374,7 +374,7 @@ static void lmh_poll(struct work_struct *work)
 	down_write(&lmh_sensor_access);
 	if (lmh_dat->intr_state != LMH_ISR_POLLING)
 		goto poll_exit;
-	lmh_read_and_update(lmh_dat, 0);
+	lmh_read_and_update(lmh_dat);
 	if (!lmh_data->intr_status_val) {
 		lmh_data->intr_state = LMH_ISR_MONITOR;
 		pr_debug("Zero throttling. Re-enabling interrupt\n");
@@ -421,8 +421,7 @@ static irqreturn_t lmh_isr_thread(int irq, void *data)
 	trace_lmh_event_call("Lmh Interrupt");
 
 	disable_irq_nosync(irq);
-	if(!down_write_trylock(&lmh_sensor_access))
-		return IRQ_HANDLED;
+	down_write(&lmh_sensor_access);
 	if (lmh_dat->intr_state != LMH_ISR_MONITOR) {
 		pr_err("Invalid software state\n");
 		trace_lmh_event_call("Invalid software state");
@@ -440,7 +439,7 @@ static irqreturn_t lmh_isr_thread(int irq, void *data)
 			goto decide_next_action;
 		}
 	}
-	lmh_read_and_update(lmh_dat, 1);
+	lmh_read_and_update(lmh_dat);
 	if (!lmh_dat->intr_status_val) {
 		pr_debug("LMH not throttling. Enabling interrupt\n");
 		lmh_dat->intr_state = LMH_ISR_MONITOR;

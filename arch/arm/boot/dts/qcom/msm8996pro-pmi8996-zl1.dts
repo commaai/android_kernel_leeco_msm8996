@@ -13,11 +13,12 @@
 
 /dts-v1/;
 
-#include "msm8996-v3.dtsi"
-#include "msm8996-le_x5-dvt1.dtsi"
+#include "msm8996pro.dtsi"
+#include "msm-pmi8996.dtsi"
+#include "msm8996-mtp.dtsi"
 
 / {
-	model = "Letv Technologies, Inc. MSM 8996 v3 + PMI8994 LE_X5-DVT1";
+	model = "Letv Technologies, Inc. MSM 8996pro + PMI8996 LE_ZL1-DVT1";
 	compatible = "qcom,msm8996-mtp", "qcom,msm8996", "qcom,mtp";
-	qcom,board-id = <8 0x32>;
+	qcom,board-id = <8 0xA2>;
 };

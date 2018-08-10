@@ -800,11 +800,6 @@ int fts_create_sysfs(struct i2c_client * client)
 
 	data->cdev.name = "touchpanel";
 	data->cdev.groups = attr_groups;
-	 err = letv_classdev_register(&client->dev,&data->cdev);
-	 if(err){
-		dev_err(&client->dev, "Failure %d creating classdev\n",
-			err);
-	}
 
 	return err;
 }
@@ -817,9 +812,6 @@ int fts_create_sysfs(struct i2c_client * client)
 ***********************************************************************/
 int fts_remove_sysfs(struct i2c_client * client)
 {
-	struct fts_ts_data *data = fts_wq_data;
-
 	sysfs_remove_group(&client->dev.kobj, &fts_attribute_group);
-	letv_classdev_unregister(&data->cdev);
 	return 0;
 }

@@ -49,7 +49,7 @@ static int mmap_is_legacy(void)
 
 unsigned long arch_mmap_rnd(void)
 {
-	unsigned long rnd = 0;
+	unsigned long rnd;
 
 	rnd = (unsigned long)get_random_int() & STACK_RND_MASK;
 

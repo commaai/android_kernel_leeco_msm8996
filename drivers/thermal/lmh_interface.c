@@ -342,7 +342,7 @@ static void lmh_evaluate_and_notify(struct lmh_mon_sensor_data *lmh_sensor,
 	}
 }
 
-void lmh_update_reading(struct lmh_sensor_ops *ops, long trip_val, bool is_from_isr)
+void lmh_update_reading(struct lmh_sensor_ops *ops, long trip_val)
 {
 	struct lmh_mon_sensor_data *lmh_sensor = NULL;
 
@@ -350,32 +350,14 @@ void lmh_update_reading(struct lmh_sensor_ops *ops, long trip_val, bool is_from_
 		pr_err("Invalid input\n");
 		return;
 	}
-	if(is_from_isr)
-	{
-		if(!down_read_trylock(&lmh_mon_access_lock))
-			return;
-	}
-	else
-	{
-		down_read(&lmh_mon_access_lock);
-	}
+
+	down_read(&lmh_mon_access_lock);
 	lmh_sensor = lmh_match_sensor_ops(ops);
 	if (!lmh_sensor) {
 		pr_err("Invalid ops\n");
 		goto interrupt_exit;
 	}
-	if(is_from_isr)
-	{
-		if(!down_write_trylock(&lmh_sensor->lock))
-		{
-			up_read(&lmh_mon_access_lock);
-			return;
-		}
-	}
-	else
-	{
-		down_write(&lmh_sensor->lock);
-	}
+	down_write(&lmh_sensor->lock);
 	pr_debug("Sensor:[%s] intensity:%ld\n", lmh_sensor->sensor_name,
 		trip_val);
 	lmh_evaluate_and_notify(lmh_sensor, trip_val);

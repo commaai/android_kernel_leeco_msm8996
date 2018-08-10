@@ -1137,16 +1137,5 @@ config TOUCHSCREEN_MAXIM_STI
 	  To compile this driver as a module, choose M here: the
 	  module will be called maxim_sti.
 
-config LETVS_CLASS
-       bool "letv class  for Mediatek package"
-       default n
-       help
-         Say Y here if you have letv class.
-
-         If unsure, say N.
-
-         To compile this dirver as a module, choose M here: the
-	 module will be called.
-
 source "drivers/input/touchscreen/gt9xx/Kconfig"
 endif

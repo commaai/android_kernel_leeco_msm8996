@@ -1842,7 +1842,7 @@ static void usb_bam_finish_resume(struct work_struct *w)
 	struct usb_bam_pipe_connect *pipe_connect;
 	struct usb_bam_ctx_type *ctx;
 	struct device *bam_dev;
-	u32 idx = 0, dst_idx, suspended;
+	u32 idx, dst_idx, suspended;
 
 	info_ptr = container_of(w, struct usb_bam_ipa_handshake_info,
 			resume_work);
