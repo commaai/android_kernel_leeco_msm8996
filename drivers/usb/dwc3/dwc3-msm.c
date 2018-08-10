@@ -262,6 +262,12 @@ struct dwc3_msm {
 static void dwc3_pwr_event_handler(struct dwc3_msm *mdwc);
 static int dwc3_msm_gadget_vbus_draw(struct dwc3_msm *mdwc, unsigned mA);
 
+#ifdef CONFIG_MACH_ZL1
+static void dwc3_undefined_to_b_idle(struct dwc3_msm *mdwc);
+static void dwc3_b_idle_to_a_host(struct dwc3_msm *mdwc);
+static void dwc3_a_host_to_b_idle(struct dwc3_msm *mdwc);
+#endif
+
 /**
  *
  * Read register with debug info.
@@ -2380,6 +2386,17 @@ static int dwc3_msm_power_set_property_usb(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_PRESENT:
 		dev_dbg(mdwc->dev, "%s: notify xceiv event with val:%d\n",
 							__func__, val->intval);
+#ifdef CONFIG_MACH_ZL1
+		if (val->intval) {
+			if (mdwc->otg_state == OTG_STATE_B_IDLE)
+				dwc3_b_idle_to_a_host(mdwc);
+		} else {
+			if (mdwc->otg_state == OTG_STATE_A_HOST)
+				dwc3_a_host_to_b_idle(mdwc);
+		}
+
+		break;
+#endif
 		/*
 		 * Now otg_sm_work() state machine waits for USB cable status.
 		 * Hence here it makes sure that schedule resume work only if
@@ -2889,6 +2906,7 @@ static int dwc3_msm_probe(struct platform_device *pdev)
 		goto err;
 	}
 
+#ifndef CONFIG_MACH_ZL1
 	host_mode = of_usb_get_dr_mode(dwc3_node) == USB_DR_MODE_HOST;
 	/* usb_psy required only for vbus_notifications */
 	if (!host_mode) {
@@ -2913,6 +2931,7 @@ static int dwc3_msm_probe(struct platform_device *pdev)
 			goto err;
 		}
 	}
+#endif
 
 	ret = of_platform_populate(node, NULL, NULL, &pdev->dev);
 	if (ret) {
@@ -2976,6 +2995,35 @@ static int dwc3_msm_probe(struct platform_device *pdev)
 
 	schedule_delayed_work(&mdwc->sm_work, 0);
 
+#ifdef CONFIG_MACH_ZL1
+	dwc3_undefined_to_b_idle(mdwc);
+
+	host_mode = of_usb_get_dr_mode(dwc3_node) == USB_DR_MODE_HOST;
+	/* usb_psy required only for vbus_notifications */
+	if (!host_mode) {
+		mdwc->usb_psy.name = "usb";
+		mdwc->usb_psy.type = POWER_SUPPLY_TYPE_USB;
+		mdwc->usb_psy.supplied_to = dwc3_msm_pm_power_supplied_to;
+		mdwc->usb_psy.num_supplicants = ARRAY_SIZE(
+						dwc3_msm_pm_power_supplied_to);
+		mdwc->usb_psy.properties = dwc3_msm_pm_power_props_usb;
+		mdwc->usb_psy.num_properties =
+					ARRAY_SIZE(dwc3_msm_pm_power_props_usb);
+		mdwc->usb_psy.get_property = dwc3_msm_power_get_property_usb;
+		mdwc->usb_psy.set_property = dwc3_msm_power_set_property_usb;
+		mdwc->usb_psy.property_is_writeable =
+				dwc3_msm_property_is_writeable;
+
+		ret = power_supply_register(&pdev->dev, &mdwc->usb_psy);
+		if (ret < 0) {
+			dev_err(&pdev->dev,
+					"%s:power_supply_register usb failed\n",
+						__func__);
+			goto put_dwc3;
+		}
+	}
+#endif
+
 	/* Update initial ID state */
 	if (mdwc->pmic_id_irq) {
 		enable_irq(mdwc->pmic_id_irq);
@@ -3000,8 +3048,10 @@ put_dwc3:
 	if (mdwc->bus_perf_client)
 		msm_bus_scale_unregister_client(mdwc->bus_perf_client);
 put_psupply:
+#ifndef CONFIG_MACH_ZL1
 	if (mdwc->usb_psy.dev)
 		power_supply_unregister(&mdwc->usb_psy);
+#endif
 err:
 	return ret;
 }
@@ -3386,6 +3436,35 @@ static void dwc3_initialize(struct dwc3_msm *mdwc)
 			PWR_EVNT_POWERDOWN_IN_P3_MASK, 1);
 }
 
+#ifdef CONFIG_MACH_ZL1
+static void dwc3_undefined_to_b_idle(struct dwc3_msm *mdwc)
+{
+	struct dwc3 *dwc = platform_get_drvdata(mdwc->dwc3);
+
+	atomic_set(&dwc->in_lpm, 0);
+	pm_runtime_set_active(mdwc->dev);
+	pm_runtime_enable(mdwc->dev);
+	pm_runtime_get_noresume(mdwc->dev);
+	dwc3_initialize(mdwc);
+	pm_runtime_put_sync(mdwc->dev);
+	mdwc->otg_state = OTG_STATE_B_IDLE;
+
+	dwc3_msm_gadget_vbus_draw(mdwc, 0);
+}
+
+static void dwc3_b_idle_to_a_host(struct dwc3_msm *mdwc)
+{
+	mdwc->otg_state = OTG_STATE_A_HOST;
+	dwc3_otg_start_host(mdwc, 1);
+}
+
+static void dwc3_a_host_to_b_idle(struct dwc3_msm *mdwc)
+{
+	dwc3_otg_start_host(mdwc, 0);
+	mdwc->otg_state = OTG_STATE_B_IDLE;
+}
+#endif
+
 /**
  * dwc3_otg_sm_work - workqueue function.
  *
@@ -3402,6 +3481,10 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 	unsigned long delay = 0;
 	const char *state;
 
+#ifdef CONFIG_MACH_ZL1
+	return;
+#endif
+
 	if (mdwc->dwc3)
 		dwc = platform_get_drvdata(mdwc->dwc3);
 
@@ -3417,8 +3500,7 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 	/* Check OTG state */
 	switch (mdwc->otg_state) {
 	case OTG_STATE_UNDEFINED:
-		if (IS_ENABLED(CONFIG_MACH_ZL1) ||
-			!test_bit(ID, &mdwc->inputs)) {
+		if (!test_bit(ID, &mdwc->inputs)) {
 			dbg_event(0xFF, "undef_host", 0);
 			atomic_set(&dwc->in_lpm, 0);
 			pm_runtime_set_active(mdwc->dev);
@@ -3486,8 +3568,7 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 		break;
 
 	case OTG_STATE_B_IDLE:
-		if (IS_ENABLED(CONFIG_MACH_ZL1) ||
-			!test_bit(ID, &mdwc->inputs)) {
+		if (!test_bit(ID, &mdwc->inputs)) {
 			dev_dbg(mdwc->dev, "!id\n");
 			mdwc->otg_state = OTG_STATE_A_IDLE;
 			work = 1;
@@ -3586,8 +3667,7 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 
 	case OTG_STATE_A_IDLE:
 		/* Switch to A-Device*/
-		if (!IS_ENABLED(CONFIG_MACH_ZL1) &&
-			test_bit(ID, &mdwc->inputs)) {
+		if (test_bit(ID, &mdwc->inputs)) {
 			dev_dbg(mdwc->dev, "id\n");
 			mdwc->otg_state = OTG_STATE_B_IDLE;
 			mdwc->vbus_retry_count = 0;
@@ -3615,8 +3695,7 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 		break;
 
 	case OTG_STATE_A_HOST:
-		if (!IS_ENABLED(CONFIG_MACH_ZL1) &&
-			(test_bit(ID, &mdwc->inputs) || mdwc->hc_died)) {
+		if (test_bit(ID, &mdwc->inputs) || mdwc->hc_died) {
 			dev_dbg(mdwc->dev, "id || hc_died\n");
 			dwc3_otg_start_host(mdwc, 0);
 			mdwc->otg_state = OTG_STATE_B_IDLE;
