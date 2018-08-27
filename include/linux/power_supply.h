@@ -22,7 +22,7 @@
 #ifdef CONFIG_MACH_ZL1
 /* SMB1351 range is [100, 4500] */
 #define EON_MIN_MA 100
-#define EON_MAX_MA 2400
+#define EON_MAX_MA 2000
 #endif
 
 /*
