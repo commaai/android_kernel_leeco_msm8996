@@ -319,11 +319,17 @@ EXPORT_SYMBOL_GPL(irq_set_affinity_notifier);
 /*
  * Generic version of the affinity autoselector.
  */
+static DEFINE_SPINLOCK(irq_affinity_lock);
+static int irq_affinity_idx;
 static int
 setup_affinity(unsigned int irq, struct irq_desc *desc, struct cpumask *mask)
 {
-	struct cpumask *set = irq_default_affinity;
-	int node = desc->irq_data.node;
+	/* Intensive IRQs on the Leeco that need poor man's balancing */
+	static const int balanced_irqs[] = {
+		6, 13, 17, 19, 26, 27, 32, 34, 40, 77, 78, 79, 86, 150, 193, 733
+	};
+	const struct cpumask *set = irq_default_affinity;
+	int i, node = desc->irq_data.node;
 
 	/* Excludes PER_CPU and NO_BALANCE interrupts */
 	if (!irq_can_set_affinity(irq))
@@ -339,6 +345,18 @@ setup_affinity(unsigned int irq, struct irq_desc *desc, struct cpumask *mask)
 			set = desc->irq_data.affinity;
 		else
 			irqd_clear(&desc->irq_data, IRQD_AFFINITY_SET);
+	}
+
+	for (i = 0; i < ARRAY_SIZE(balanced_irqs); i++) {
+		if (balanced_irqs[i] == irq) {
+			unsigned long flags;
+
+			spin_lock_irqsave(&irq_affinity_lock, flags);
+			set = cpumask_of(irq_affinity_idx);
+			irq_affinity_idx = (irq_affinity_idx + 1) % NR_CPUS;
+			spin_unlock_irqrestore(&irq_affinity_lock, flags);
+			break;
+		}
 	}
 
 	cpumask_and(mask, cpu_online_mask, set);
