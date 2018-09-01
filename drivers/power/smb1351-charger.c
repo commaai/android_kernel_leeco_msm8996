@@ -11,6 +11,7 @@
  */
 
 #define pr_fmt(fmt) "%s: " fmt, __func__
+#define DEBUG
 
 #include <linux/i2c.h>
 #include <linux/debugfs.h>
