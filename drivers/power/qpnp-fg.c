@@ -2633,7 +2633,7 @@ static void check_charger_throttle(struct fg_chip *chip, int *resched_ms)
 		int current_ma =
 			get_sram_prop_now(chip, FG_DATA_CURRENT) / 1000;
 
-		set_charge_current(chip, chip->prev_current_ma + current_ma);
+		set_charge_current(chip, chip->prev_current_ma + current_ma + 200);
 		*resched_ms = 1000;
 	} else {
 		set_charge_current(chip, EON_MAX_MA);
