@@ -5652,11 +5652,9 @@ static void smbchg_set_parallel_ma(struct smbchg_chip *chip, int current_ma)
 {
 	union power_supply_propval pval = { .intval = current_ma * 1000 };
 
-	mutex_lock(&chip->parallel_lock);
 	power_supply_set_current_limit(chip->parallel_psy, pval.intval);
 	chip->parallel_psy->set_property(chip->parallel_psy,
 		POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX, &pval);
-	mutex_unlock(&chip->parallel_lock);
 }
 
 static void smbchg_enable_charger(struct smbchg_chip *chip)
@@ -5725,8 +5723,12 @@ static int smbchg_battery_set_property(struct power_supply *psy,
 				struct smbchg_chip, batt_psy);
 
 #ifdef CONFIG_MACH_ZL1
-	if (prop == POWER_SUPPLY_PROP_CURRENT_MAX)
-		smbchg_set_parallel_ma(chip, val->intval / 1000);
+	if (prop == POWER_SUPPLY_PROP_CURRENT_MAX) {
+		mutex_lock(&chip->parallel_lock);
+		if (chip->usb_present)
+			smbchg_set_parallel_ma(chip, val->intval / 1000);
+		mutex_unlock(&chip->parallel_lock);
+	}
 	return 0;
 #endif
 
@@ -6412,12 +6414,14 @@ static irqreturn_t src_detect_handler(int irq, void *_chip)
 #ifdef CONFIG_MACH_ZL1
 	struct smbchg_chip *chip = _chip;
 
+	mutex_lock(&chip->parallel_lock);
 	chip->usb_present = is_src_detect_high(chip);
 	power_supply_set_present(chip->usb_psy, chip->usb_present);
 	if (chip->usb_present)
 		smbchg_enable_charger(chip);
 	else
 		smbchg_disable_charger(chip);
+	mutex_unlock(&chip->parallel_lock);
 #else
 	struct smbchg_chip *chip = _chip;
 	bool usb_present = is_usb_present(chip);
