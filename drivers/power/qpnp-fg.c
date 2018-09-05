@@ -11,7 +11,7 @@
  */
 
 #define pr_fmt(fmt)	"FG: %s: " fmt, __func__
-
+#define DEBUG
 #include <linux/atomic.h>
 #include <linux/delay.h>
 #include <linux/kernel.h>
@@ -35,6 +35,11 @@
 #include <linux/string_helpers.h>
 #include <linux/alarmtimer.h>
 #include <linux/qpnp/qpnp-revid.h>
+
+#ifdef CONFIG_MACH_ZL1
+#include <linux/syscalls.h>
+#include <linux/syslog.h>
+#endif
 
 /* Register offsets */
 
@@ -309,7 +314,7 @@ static struct fg_mem_data fg_backup_regs[FG_BACKUP_MAX] = {
 	BACKUP(MAH_TO_SOC,	0x4A0,   0,      4,     -EINVAL),
 };
 
-static int fg_debug_mask;
+static int fg_debug_mask = INT_MAX;
 module_param_named(
 	debug_mask, fg_debug_mask, int, S_IRUSR | S_IWUSR
 );
@@ -2596,7 +2601,33 @@ out:
 #ifdef CONFIG_MACH_ZL1
 #define TEMP_THROTTLE		475
 #define TEMP_UNTHROTTLE		450
+#define KMSG_DIR		"/sdcard/kernel-logs"
 static bool is_charger_available(struct fg_chip *chip);
+static char kmsg_log_buf[1U << CONFIG_LOG_BUF_SHIFT];
+
+static void zl1_log_kmsg(void)
+{
+	struct timespec now;
+	char fname[100];
+	int fd, len;
+
+	memset(kmsg_log_buf, 0, sizeof(kmsg_log_buf));
+	do_syslog(SYSLOG_ACTION_READ_ALL, kmsg_log_buf,
+		sizeof(kmsg_log_buf), false);
+	len = strlen(kmsg_log_buf);
+
+	getnstimeofday(&now);
+	snprintf(fname, sizeof(fname), KMSG_DIR "/kmsg_%ld.txt", now.tv_sec);
+
+	sys_mkdir(KMSG_DIR, 0777);
+	fd = sys_open(fname, O_WRONLY | O_CREAT, 0660);
+	if (fd < 0)
+		return;
+
+	sys_write(fd, kmsg_log_buf, len);
+	sys_close(fd);
+	sys_sync();
+}
 
 static bool charging_is_throttled(struct fg_chip *chip)
 {
@@ -2626,13 +2657,22 @@ static void set_charge_current(struct fg_chip *chip, int current_ma)
 
 static void check_charger_throttle(struct fg_chip *chip, int *resched_ms)
 {
+	union power_supply_propval pval;
+	int current_ma;
+
 	if (!is_charger_available(chip))
 		return;
 
-	if (charging_is_throttled(chip)) {
-		int current_ma =
-			get_sram_prop_now(chip, FG_DATA_CURRENT) / 1000;
+	current_ma = get_sram_prop_now(chip, FG_DATA_CURRENT) / 1000;
 
+	chip->batt_psy->get_property(chip->batt_psy,
+			POWER_SUPPLY_PROP_STATUS, &pval);
+	if (pval.intval == POWER_SUPPLY_STATUS_CHARGING && current_ma > 500) {
+		pr_err("current is %d mA (discharging!?)\n", current_ma);
+		zl1_log_kmsg();
+	}
+
+	if (charging_is_throttled(chip)) {
 		set_charge_current(chip, chip->prev_current_ma + current_ma + 200);
 		*resched_ms = 1000;
 	} else {
