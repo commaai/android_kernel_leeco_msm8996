@@ -6412,6 +6412,11 @@ static int fg_of_init(struct fg_chip *chip)
 	OF_READ_SETTING(FG_MEM_HARD_HOT, "hot-bat-decidegc", rc, 1);
 	OF_READ_SETTING(FG_MEM_HARD_COLD, "cold-bat-decidegc", rc, 1);
 
+#ifdef CONFIG_MACH_ZL1
+	settings[FG_MEM_SOFT_HOT].value = MAX_TEMP_DEGC;
+	settings[FG_MEM_HARD_HOT].value = MAX_TEMP_DEGC;
+#endif
+
 	if (of_find_property(node, "qcom,cold-hot-jeita-hysteresis", NULL)) {
 		int hard_hot = 0, soft_hot = 0, hard_cold = 0, soft_cold = 0;
 
@@ -6452,7 +6457,9 @@ static int fg_of_init(struct fg_chip *chip)
 			"qcom,thermal-coefficients", &len);
 	if (data && len == THERMAL_COEFF_N_BYTES) {
 		memcpy(chip->thermal_coefficients, data, len);
+#ifndef CONFIG_MACH_ZL1
 		chip->use_thermal_coefficients = true;
+#endif
 	}
 	OF_READ_SETTING(FG_MEM_RESUME_SOC, "resume-soc", rc, 1);
 	settings[FG_MEM_RESUME_SOC].value =
