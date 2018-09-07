@@ -608,6 +608,7 @@ struct fg_chip {
 	struct fg_wakeup_source	sanity_wakeup_source;
 	u8			last_beat_count;
 #ifdef CONFIG_MACH_ZL1
+	bool			prev_charger_present;
 	bool			throttled;
 	int			prev_current_ma;
 #endif
@@ -2596,7 +2597,24 @@ out:
 #ifdef CONFIG_MACH_ZL1
 #define TEMP_THROTTLE		475
 #define TEMP_UNTHROTTLE		450
+#define CURRENT_MA_RESET_THRESH	1000
 static bool is_charger_available(struct fg_chip *chip);
+
+static bool is_charger_connected(struct fg_chip *chip)
+{
+	union power_supply_propval pval;
+	int ret;
+
+	if (!is_charger_available(chip))
+		return false;
+
+	ret = chip->batt_psy->get_property(chip->batt_psy,
+			POWER_SUPPLY_PROP_STATUS, &pval);
+	if (ret)
+		return false;
+
+	return pval.intval == POWER_SUPPLY_STATUS_CHARGING;
+}
 
 static bool charging_is_throttled(struct fg_chip *chip)
 {
@@ -2624,15 +2642,39 @@ static void set_charge_current(struct fg_chip *chip, int current_ma)
 			POWER_SUPPLY_PROP_CURRENT_MAX, &pval);
 }
 
+static void reset_charger(struct fg_chip *chip)
+{
+	union power_supply_propval pval;
+
+	/* Values less than zero invoke smbchg_reset_charger() */
+	pval.intval = -1;
+	chip->batt_psy->set_property(chip->batt_psy,
+			POWER_SUPPLY_PROP_CURRENT_MAX, &pval);
+}
+
 static void check_charger_throttle(struct fg_chip *chip, int *resched_ms)
 {
-	if (!is_charger_available(chip))
+	int current_ma;
+
+	if (!is_charger_connected(chip)) {
+		chip->prev_charger_present = false;
 		return;
+	}
+
+	/* Wait 10 seconds for the charger to settle after being plugged in */
+	if (!chip->prev_charger_present) {
+		chip->prev_charger_present = true;
+		*resched_ms = 10000;
+		return;
+	}
+
+	current_ma = get_sram_prop_now(chip, FG_DATA_CURRENT) / 1000;
+	if (current_ma >= CURRENT_MA_RESET_THRESH) {
+		reset_charger(chip);
+		return;
+	}
 
 	if (charging_is_throttled(chip)) {
-		int current_ma =
-			get_sram_prop_now(chip, FG_DATA_CURRENT) / 1000;
-
 		set_charge_current(chip, chip->prev_current_ma + current_ma + 200);
 		*resched_ms = 1000;
 	} else {
