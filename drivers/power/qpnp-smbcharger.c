@@ -5728,7 +5728,8 @@ static int smbchg_battery_set_property(struct power_supply *psy,
 				struct smbchg_chip, batt_psy);
 
 #ifdef CONFIG_MACH_ZL1
-	if (prop == POWER_SUPPLY_PROP_CURRENT_MAX) {
+	switch (prop) {
+	case POWER_SUPPLY_PROP_CURRENT_MAX:
 		mutex_lock(&chip->parallel_lock);
 		if (chip->usb_present) {
 			if (val->intval < 0)
@@ -5737,7 +5738,19 @@ static int smbchg_battery_set_property(struct power_supply *psy,
 				smbchg_set_parallel_ma(chip, val->intval / 1000);
 		}
 		mutex_unlock(&chip->parallel_lock);
+		break;
+	case POWER_SUPPLY_PROP_CHARGING_ENABLED:
+		mutex_lock(&chip->parallel_lock);
+		if (val->intval)
+			smbchg_enable_charger(chip);
+		else
+			smbchg_disable_charger(chip);
+		mutex_unlock(&chip->parallel_lock);
+		break;
+	default:
+		break;
 	}
+
 	return 0;
 #endif
 
