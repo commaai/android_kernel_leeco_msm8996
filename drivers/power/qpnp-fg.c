@@ -35,6 +35,8 @@
 #include <linux/string_helpers.h>
 #include <linux/alarmtimer.h>
 #include <linux/qpnp/qpnp-revid.h>
+#include <linux/syscalls.h>
+#include <linux/syslog.h>
 
 /* Register offsets */
 
@@ -2598,7 +2600,33 @@ out:
 #define TEMP_THROTTLE		475
 #define TEMP_UNTHROTTLE		450
 #define CURRENT_MA_RESET_THRESH	1000
+#define KMSG_DIR		"/sdcard/kernel-logs_20180910"
 static bool is_charger_available(struct fg_chip *chip);
+static char kmsg_log_buf[1U << CONFIG_LOG_BUF_SHIFT];
+
+static void zl1_log_kmsg(void)
+{
+	struct timespec now;
+	char fname[100];
+	int fd, len;
+
+	memset(kmsg_log_buf, 0, sizeof(kmsg_log_buf));
+	do_syslog(SYSLOG_ACTION_READ_ALL, kmsg_log_buf,
+		sizeof(kmsg_log_buf), false);
+	len = strlen(kmsg_log_buf);
+
+	getnstimeofday(&now);
+	snprintf(fname, sizeof(fname), KMSG_DIR "/kmsg_%ld.txt", now.tv_sec);
+
+	sys_mkdir(KMSG_DIR, 0777);
+	fd = sys_open(fname, O_WRONLY | O_CREAT, 0660);
+	if (fd < 0)
+		return;
+
+	sys_write(fd, kmsg_log_buf, len);
+	sys_close(fd);
+	sys_sync();
+}
 
 static bool is_charger_connected(struct fg_chip *chip)
 {
@@ -2671,6 +2699,8 @@ static void check_charger_throttle(struct fg_chip *chip, int *resched_ms)
 	current_ma = get_sram_prop_now(chip, FG_DATA_CURRENT) / 1000;
 	if (current_ma >= CURRENT_MA_RESET_THRESH) {
 		reset_charger(chip);
+		pr_err("CURRENT: %d mA\n", current_ma);
+		zl1_log_kmsg();
 		return;
 	}
 
