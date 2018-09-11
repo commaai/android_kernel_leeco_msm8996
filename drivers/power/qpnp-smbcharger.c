@@ -5682,6 +5682,7 @@ static void smbchg_disable_charger(struct smbchg_chip *chip)
 static void smbchg_reset_charger(struct smbchg_chip *chip)
 {
 	smbchg_disable_charger(chip);
+	msleep(1000);
 	smbchg_enable_charger(chip);
 }
 #endif

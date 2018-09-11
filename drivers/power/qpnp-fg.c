@@ -613,6 +613,7 @@ struct fg_chip {
 	bool			prev_charger_present;
 	bool			throttled;
 	int			prev_current_ma;
+	unsigned long		charger_ready_expires;
 #endif
 };
 
@@ -2600,14 +2601,14 @@ out:
 #define TEMP_THROTTLE		475
 #define TEMP_UNTHROTTLE		450
 #define CURRENT_MA_RESET_THRESH	1000
-#define KMSG_DIR		"/sdcard/kernel-logs_20180910"
+#define KMSG_DIR		"/sdcard/kernel-logs_"
 static bool is_charger_available(struct fg_chip *chip);
 static char kmsg_log_buf[1U << CONFIG_LOG_BUF_SHIFT];
 
 static void zl1_log_kmsg(void)
 {
 	struct timespec now;
-	char fname[100];
+	char fname[100], dir[100];
 	int fd, len;
 
 	memset(kmsg_log_buf, 0, sizeof(kmsg_log_buf));
@@ -2616,9 +2617,10 @@ static void zl1_log_kmsg(void)
 	len = strlen(kmsg_log_buf);
 
 	getnstimeofday(&now);
-	snprintf(fname, sizeof(fname), KMSG_DIR "/kmsg_%ld.txt", now.tv_sec);
 
-	sys_mkdir(KMSG_DIR, 0777);
+	snprintf(dir, sizeof(dir), KMSG_DIR "%ld", now.tv_sec / 86400);
+	snprintf(fname, sizeof(fname), "%s/kmsg_%ld.txt", dir, now.tv_sec);
+	sys_mkdir(dir, 0777);
 	fd = sys_open(fname, O_WRONLY | O_CREAT, 0660);
 	if (fd < 0)
 		return;
@@ -2689,12 +2691,15 @@ static void check_charger_throttle(struct fg_chip *chip, int *resched_ms)
 		return;
 	}
 
-	/* Wait 10 seconds for the charger to settle after being plugged in */
 	if (!chip->prev_charger_present) {
 		chip->prev_charger_present = true;
-		*resched_ms = 10000;
+		chip->charger_ready_expires = jiffies + msecs_to_jiffies(10000);
 		return;
 	}
+
+	/* Wait 10 seconds for the charger to settle after being plugged in */
+	if (time_before(jiffies, chip->charger_ready_expires))
+		return;
 
 	current_ma = get_sram_prop_now(chip, FG_DATA_CURRENT) / 1000;
 	if (current_ma >= CURRENT_MA_RESET_THRESH) {
