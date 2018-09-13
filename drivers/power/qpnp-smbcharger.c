@@ -7417,6 +7417,11 @@ static int smb_parse_dt(struct smbchg_chip *chip)
 	chip->skip_usb_suspend_for_fake_battery = of_property_read_bool(node,
 				"qcom,skip-usb-suspend-for-fake-battery");
 
+#ifdef CONFIG_MACH_ZL1
+	chip->iterm_ma = -EINVAL;
+	chip->iterm_disabled = true;
+#endif
+
 	/* parse the battery missing detection pin source */
 	rc = of_property_read_string(chip->spmi->dev.of_node,
 		"qcom,bmd-pin-src", &bpd);
