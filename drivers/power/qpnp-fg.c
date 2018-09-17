@@ -35,8 +35,6 @@
 #include <linux/string_helpers.h>
 #include <linux/alarmtimer.h>
 #include <linux/qpnp/qpnp-revid.h>
-#include <linux/syscalls.h>
-#include <linux/syslog.h>
 
 /* Register offsets */
 
@@ -610,10 +608,8 @@ struct fg_chip {
 	struct fg_wakeup_source	sanity_wakeup_source;
 	u8			last_beat_count;
 #ifdef CONFIG_MACH_ZL1
-	bool			prev_charger_present;
 	bool			throttled;
-	int			prev_current_ma;
-	unsigned long		charger_ready_expires;
+	int                     prev_current_ma;
 #endif
 };
 
@@ -2600,35 +2596,7 @@ out:
 #ifdef CONFIG_MACH_ZL1
 #define TEMP_THROTTLE		475
 #define TEMP_UNTHROTTLE		450
-#define CURRENT_MA_RESET_THRESH	1000
-#define KMSG_DIR		"/sdcard/kernel-logs_"
 static bool is_charger_available(struct fg_chip *chip);
-static char kmsg_log_buf[1U << CONFIG_LOG_BUF_SHIFT];
-
-static void zl1_log_kmsg(void)
-{
-	struct timespec now;
-	char fname[100], dir[100];
-	int fd, len;
-
-	memset(kmsg_log_buf, 0, sizeof(kmsg_log_buf));
-	do_syslog(SYSLOG_ACTION_READ_ALL, kmsg_log_buf,
-		sizeof(kmsg_log_buf), false);
-	len = strlen(kmsg_log_buf);
-
-	getnstimeofday(&now);
-
-	snprintf(dir, sizeof(dir), KMSG_DIR "%ld", now.tv_sec / 86400);
-	snprintf(fname, sizeof(fname), "%s/kmsg_%ld.txt", dir, now.tv_sec);
-	sys_mkdir(dir, 0777);
-	fd = sys_open(fname, O_WRONLY | O_CREAT, 0660);
-	if (fd < 0)
-		return;
-
-	sys_write(fd, kmsg_log_buf, len);
-	sys_close(fd);
-	sys_sync();
-}
 
 static bool is_charger_connected(struct fg_chip *chip)
 {
@@ -2672,44 +2640,14 @@ static void set_charge_current(struct fg_chip *chip, int current_ma)
 			POWER_SUPPLY_PROP_CURRENT_MAX, &pval);
 }
 
-static void reset_charger(struct fg_chip *chip)
-{
-	union power_supply_propval pval;
-
-	/* Values less than zero invoke smbchg_reset_charger() */
-	pval.intval = -1;
-	chip->batt_psy->set_property(chip->batt_psy,
-			POWER_SUPPLY_PROP_CURRENT_MAX, &pval);
-}
-
 static void check_charger_throttle(struct fg_chip *chip, int *resched_ms)
 {
-	int current_ma;
-
-	if (!is_charger_connected(chip)) {
-		chip->prev_charger_present = false;
+	if (!is_charger_connected(chip))
 		return;
-	}
-
-	if (!chip->prev_charger_present) {
-		chip->prev_charger_present = true;
-		chip->charger_ready_expires = jiffies + msecs_to_jiffies(10000);
-		return;
-	}
-
-	/* Wait 10 seconds for the charger to settle after being plugged in */
-	if (time_before(jiffies, chip->charger_ready_expires))
-		return;
-
-	current_ma = get_sram_prop_now(chip, FG_DATA_CURRENT) / 1000;
-	if (current_ma >= CURRENT_MA_RESET_THRESH) {
-		reset_charger(chip);
-		pr_err("CURRENT: %d mA\n", current_ma);
-		zl1_log_kmsg();
-		return;
-	}
 
 	if (charging_is_throttled(chip)) {
+		int current_ma = get_sram_prop_now(chip, FG_DATA_CURRENT) / 1000;
+
 		set_charge_current(chip, chip->prev_current_ma + current_ma + 200);
 		*resched_ms = 1000;
 	} else {

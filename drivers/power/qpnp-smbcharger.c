@@ -5678,13 +5678,6 @@ static void smbchg_disable_charger(struct smbchg_chip *chip)
 	smbchg_charging_en(chip, true);
 	smbchg_usb_suspend(chip, true);
 }
-
-static void smbchg_reset_charger(struct smbchg_chip *chip)
-{
-	smbchg_disable_charger(chip);
-	msleep(1000);
-	smbchg_enable_charger(chip);
-}
 #endif
 
 static enum power_supply_property smbchg_battery_properties[] = {
@@ -5732,12 +5725,8 @@ static int smbchg_battery_set_property(struct power_supply *psy,
 	switch (prop) {
 	case POWER_SUPPLY_PROP_CURRENT_MAX:
 		mutex_lock(&chip->parallel_lock);
-		if (chip->usb_present) {
-			if (val->intval < 0)
-				smbchg_reset_charger(chip);
-			else
-				smbchg_set_parallel_ma(chip, val->intval / 1000);
-		}
+		if (chip->usb_present)
+			smbchg_set_parallel_ma(chip, val->intval / 1000);
 		mutex_unlock(&chip->parallel_lock);
 		break;
 	case POWER_SUPPLY_PROP_CHARGING_ENABLED:
