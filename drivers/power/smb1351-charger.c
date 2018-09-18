@@ -1639,6 +1639,20 @@ static int smb1351_parallel_is_writeable(struct power_supply *psy,
 	}
 }
 
+#ifdef CONFIG_MACH_ZL1
+static bool smb1351_chg_en_status(struct smb1351_charger *chip)
+{
+	int rc;
+	u8 reg;
+
+	rc = smb1351_read_reg(chip, STATUS_3_REG, &reg);
+	if (rc)
+		return false;
+
+	return reg & STATUS_CHG_BIT;
+}
+#endif
+
 static int smb1351_parallel_get_property(struct power_supply *psy,
 				       enum power_supply_property prop,
 				       union power_supply_propval *val)
@@ -1648,7 +1662,11 @@ static int smb1351_parallel_get_property(struct power_supply *psy,
 
 	switch (prop) {
 	case POWER_SUPPLY_PROP_CHARGING_ENABLED:
+#ifdef CONFIG_MACH_ZL1
+		val->intval = smb1351_chg_en_status(chip);
+#else
 		val->intval = !chip->usb_suspended_status;
+#endif
 		break;
 	case POWER_SUPPLY_PROP_CURRENT_MAX:
 		if (chip->parallel_charger_present)
