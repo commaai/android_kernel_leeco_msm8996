@@ -5869,12 +5869,7 @@ static int smbchg_battery_get_property(struct power_supply *psy,
 			!get_effective_result(chip->battchg_suspend_votable);
 		break;
 	case POWER_SUPPLY_PROP_CHARGING_ENABLED:
-#ifdef CONFIG_MACH_ZL1
-		chip->parallel_psy->get_property(chip->parallel_psy,
-			POWER_SUPPLY_PROP_CHARGING_ENABLED, val);
-#else
 		val->intval = chip->chg_enabled;
-#endif
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_TYPE:
 		val->intval = get_prop_charge_type(chip);

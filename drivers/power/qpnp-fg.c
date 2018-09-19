@@ -2614,22 +2614,6 @@ static bool is_charger_connected(struct fg_chip *chip)
 	return pval.intval == POWER_SUPPLY_STATUS_CHARGING;
 }
 
-static bool is_charger_enabled(struct fg_chip *chip)
-{
-	union power_supply_propval pval;
-	int ret;
-
-	if (!is_charger_available(chip))
-		return false;
-
-	ret = chip->batt_psy->get_property(chip->batt_psy,
-			POWER_SUPPLY_PROP_CHARGING_ENABLED, &pval);
-	if (ret)
-		return false;
-
-	return pval.intval;
-}
-
 static bool charging_is_throttled(struct fg_chip *chip)
 {
 	int temp = get_sram_prop_now(chip, FG_DATA_BATT_TEMP);
@@ -2668,11 +2652,6 @@ static void check_charger_throttle(struct fg_chip *chip, int *resched_ms)
 		*resched_ms = 1000;
 	} else {
 		set_charge_current(chip, EON_MAX_MA);
-	}
-
-	if (!is_charger_enabled(chip)) {
-		pr_info("charger has stopped, triggering fuelgauge reset\n");
-		fg_check_ima_error_handling(chip);
 	}
 }
 #endif
@@ -7861,11 +7840,7 @@ static void ima_error_recovery_work(struct work_struct *work)
 	}
 
 	/* Wait for a small time before deasserting FG reset */
-#ifdef CONFIG_MACH_ZL1
-	ssleep(30);
-#else
 	msleep(100);
-#endif
 
 	if (fg_debug_mask & FG_STATUS)
 		pr_info("clearing FG from reset\n");
