@@ -416,7 +416,7 @@ enum aicl_short_deglitch_voters {
 	HVDCP_SHORT_DEGLITCH_VOTER,
 	NUM_HW_SHORT_DEGLITCH_VOTERS,
 };
-static int smbchg_debug_mask;
+static int smbchg_debug_mask = 0xFF;
 module_param_named(
 	debug_mask, smbchg_debug_mask, int, S_IRUSR | S_IWUSR
 );
@@ -919,6 +919,17 @@ static void read_usb_type(struct smbchg_chip *chip, char **usb_type_name,
 #define BATT_TAPER_CHG_VAL		0x3
 #define CHG_INHIBIT_BIT			BIT(1)
 #define BAT_TCC_REACHED_BIT		BIT(7)
+
+// early defines
+static void dump_regs(struct smbchg_chip *chip);
+#define USB_AICL_CFG				0xF3
+#define AICL_EN_BIT				BIT(2)
+#define CMD_IL			0x40
+#define USBIN_HC_MODE		BIT(0)
+#define ICL_OVERRIDE_BIT	BIT(2)
+#define IL_CFG			0xF2
+#define USBIN_INPUT_MASK	SMB_MASK(4, 0)
+
 static int get_prop_batt_status(struct smbchg_chip *chip)
 {
 	int rc, status = POWER_SUPPLY_STATUS_DISCHARGING;
@@ -966,6 +977,13 @@ static int get_prop_batt_status(struct smbchg_chip *chip)
 		status = POWER_SUPPLY_STATUS_CHARGING;
 out:
 	pr_smb_rt(PR_MISC, "CHGR_STS = 0x%02x\n", reg);
+
+  printk("HAX ENABLE CHARGING\n");
+  smbchg_sec_masked_write(chip, chip->usb_chgpth_base + USB_AICL_CFG, AICL_EN_BIT, 0);   // disable AICL
+	smbchg_sec_masked_write(chip, chip->usb_chgpth_base + IL_CFG, USBIN_INPUT_MASK, 0x17);  // set max current to 2200 (see usb_ilim_ma_table_8996)
+	smbchg_masked_write(chip, chip->usb_chgpth_base + CMD_IL, USBIN_HC_MODE | ICL_OVERRIDE_BIT, USBIN_HC_MODE | ICL_OVERRIDE_BIT); // enable charging
+  //dump_regs(chip);
+
 	return status;
 }
 
@@ -1644,6 +1662,10 @@ static int smbchg_set_usb_current_max(struct smbchg_chip *chip,
 							int current_ma)
 {
 	int rc = 0;
+
+  printk("HACKING current_ma = 2200\n");
+  chip->usb_max_current_ma = 2200;
+  return rc;
 
 	/*
 	 * if the battery is not present, do not allow the usb ICL to lower in
