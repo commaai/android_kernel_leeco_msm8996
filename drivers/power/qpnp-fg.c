@@ -609,7 +609,6 @@ struct fg_chip {
 	u8			last_beat_count;
 #ifdef CONFIG_MACH_ZL1
 	bool			throttled;
-	int                     prev_current_ma;
 #endif
 };
 
@@ -2629,15 +2628,12 @@ static bool charging_is_throttled(struct fg_chip *chip)
 	return chip->throttled;
 }
 
-static void set_charge_current(struct fg_chip *chip, int current_ma)
+static void set_charger_enabled(struct fg_chip *chip, bool enable)
 {
-	union power_supply_propval pval;
+	union power_supply_propval pval = { .intval = enable };
 
-	current_ma = clamp(current_ma, EON_MIN_MA, EON_MAX_MA);
-	chip->prev_current_ma = current_ma;
-	pval.intval = current_ma * 1000;
 	chip->batt_psy->set_property(chip->batt_psy,
-			POWER_SUPPLY_PROP_CURRENT_MAX, &pval);
+			POWER_SUPPLY_PROP_CHARGING_ENABLED, &pval);
 }
 
 static void check_charger_throttle(struct fg_chip *chip, int *resched_ms)
@@ -2645,14 +2641,7 @@ static void check_charger_throttle(struct fg_chip *chip, int *resched_ms)
 	if (!is_charger_connected(chip))
 		return;
 
-	if (charging_is_throttled(chip)) {
-		int current_ma = get_sram_prop_now(chip, FG_DATA_CURRENT) / 1000;
-
-		set_charge_current(chip, chip->prev_current_ma + current_ma + 200);
-		*resched_ms = 1000;
-	} else {
-		set_charge_current(chip, EON_MAX_MA);
-	}
+	set_charger_enabled(chip, !charging_is_throttled(chip));
 }
 #endif
 
