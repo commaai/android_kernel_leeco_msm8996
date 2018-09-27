@@ -607,9 +607,6 @@ struct fg_chip {
 	struct delayed_work	check_sanity_work;
 	struct fg_wakeup_source	sanity_wakeup_source;
 	u8			last_beat_count;
-#ifdef CONFIG_MACH_ZL1
-	bool			throttled;
-#endif
 };
 
 /* FG_MEMIF DEBUGFS structures */
@@ -2592,59 +2589,6 @@ out:
 	fg_relax(&chip->sanity_wakeup_source);
 }
 
-#ifdef CONFIG_MACH_ZL1
-#define TEMP_THROTTLE		475
-#define TEMP_UNTHROTTLE		450
-static bool is_charger_available(struct fg_chip *chip);
-
-static bool is_charger_connected(struct fg_chip *chip)
-{
-	union power_supply_propval pval;
-	int ret;
-
-	if (!is_charger_available(chip))
-		return false;
-
-	ret = chip->batt_psy->get_property(chip->batt_psy,
-			POWER_SUPPLY_PROP_STATUS, &pval);
-	if (ret)
-		return false;
-
-	return pval.intval == POWER_SUPPLY_STATUS_CHARGING;
-}
-
-static bool charging_is_throttled(struct fg_chip *chip)
-{
-	int temp = get_sram_prop_now(chip, FG_DATA_BATT_TEMP);
-
-	if (chip->throttled) {
-		if (temp <= TEMP_UNTHROTTLE)
-			chip->throttled = false;
-	} else {
-		if (temp >= TEMP_THROTTLE)
-			chip->throttled = true;
-	}
-
-	return chip->throttled;
-}
-
-static void set_charger_enabled(struct fg_chip *chip, bool enable)
-{
-	union power_supply_propval pval = { .intval = enable };
-
-	chip->batt_psy->set_property(chip->batt_psy,
-			POWER_SUPPLY_PROP_BATTERY_CHARGING_ENABLED, &pval);
-}
-
-static void check_charger_throttle(struct fg_chip *chip, int *resched_ms)
-{
-	if (!is_charger_connected(chip))
-		return;
-
-	set_charger_enabled(chip, !charging_is_throttled(chip));
-}
-#endif
-
 #define SRAM_TIMEOUT_MS			3000
 static void update_sram_data_work(struct work_struct *work)
 {
@@ -2670,10 +2614,6 @@ wait:
 		goto out;
 	}
 	rc = update_sram_data(chip, &resched_ms);
-
-#ifdef CONFIG_MACH_ZL1
-	check_charger_throttle(chip, &resched_ms);
-#endif
 
 out:
 	if (!rc)
@@ -6417,8 +6357,8 @@ static int fg_of_init(struct fg_chip *chip)
 	OF_READ_SETTING(FG_MEM_HARD_COLD, "cold-bat-decidegc", rc, 1);
 
 #ifdef CONFIG_MACH_ZL1
-	settings[FG_MEM_SOFT_HOT].value = MAX_TEMP_DEGC;
-	settings[FG_MEM_HARD_HOT].value = MAX_TEMP_DEGC;
+	settings[FG_MEM_HARD_HOT].value = 500;
+	settings[FG_MEM_SOFT_HOT].value = settings[FG_MEM_HARD_HOT].value - 1;
 #endif
 
 	if (of_find_property(node, "qcom,cold-hot-jeita-hysteresis", NULL)) {
@@ -6461,9 +6401,7 @@ static int fg_of_init(struct fg_chip *chip)
 			"qcom,thermal-coefficients", &len);
 	if (data && len == THERMAL_COEFF_N_BYTES) {
 		memcpy(chip->thermal_coefficients, data, len);
-#ifndef CONFIG_MACH_ZL1
 		chip->use_thermal_coefficients = true;
-#endif
 	}
 	OF_READ_SETTING(FG_MEM_RESUME_SOC, "resume-soc", rc, 1);
 	settings[FG_MEM_RESUME_SOC].value =
