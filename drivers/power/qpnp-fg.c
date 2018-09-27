@@ -2633,7 +2633,7 @@ static void set_charger_enabled(struct fg_chip *chip, bool enable)
 	union power_supply_propval pval = { .intval = enable };
 
 	chip->batt_psy->set_property(chip->batt_psy,
-			POWER_SUPPLY_PROP_CHARGING_ENABLED, &pval);
+			POWER_SUPPLY_PROP_BATTERY_CHARGING_ENABLED, &pval);
 }
 
 static void check_charger_throttle(struct fg_chip *chip, int *resched_ms)

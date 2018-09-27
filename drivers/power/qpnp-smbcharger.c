@@ -5727,6 +5727,16 @@ static int smbchg_battery_set_property(struct power_supply *psy,
 	switch (prop) {
 	case POWER_SUPPLY_PROP_CHARGING_ENABLED:
 		mutex_lock(&chip->chg_lock);
+		if (chip->usb_present) {
+			if (val->intval)
+				smbchg_enable_charger(chip);
+			else
+				smbchg_disable_charger(chip);
+		}
+		mutex_unlock(&chip->chg_lock);
+		break;
+	case POWER_SUPPLY_PROP_BATTERY_CHARGING_ENABLED:
+		mutex_lock(&chip->chg_lock);
 		smbchg_charging_en(chip, val->intval);
 		mutex_unlock(&chip->chg_lock);
 		break;
