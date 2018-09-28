@@ -5695,10 +5695,14 @@ static void smbchg_enable_charger(struct smbchg_chip *chip)
 
 	smbchg_set_charge_ma(chip, EON_MAX_MA);
 	power_supply_changed(&chip->batt_psy);
+	set_property_on_fg(chip, POWER_SUPPLY_PROP_STATUS,
+			POWER_SUPPLY_STATUS_CHARGING);
 }
 
 static void smbchg_disable_charger(struct smbchg_chip *chip)
 {
+	set_property_on_fg(chip, POWER_SUPPLY_PROP_STATUS,
+			POWER_SUPPLY_STATUS_DISCHARGING);
 	power_supply_changed(&chip->batt_psy);
 	smbchg_configure_parallel_chg(chip, false);
 	smbchg_charging_en(chip, false);
