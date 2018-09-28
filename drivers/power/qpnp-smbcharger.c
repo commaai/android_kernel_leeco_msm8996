@@ -278,6 +278,7 @@ struct smbchg_chip {
 	struct votable			*hw_aicl_rerun_enable_indirect_votable;
 	struct votable			*aicl_deglitch_short_votable;
 #ifdef CONFIG_MACH_ZL1
+	struct power_supply		*parallel_psy;
 	struct mutex			chg_lock;
 #endif
 };
@@ -5662,10 +5663,29 @@ static void smbchg_set_charge_ma(struct smbchg_chip *chip, int current_ma)
 				USBIN_INPUT_MASK, usb_cur_val);
 }
 
+static void smbchg_set_parallel_ma(struct smbchg_chip *chip, int current_ma)
+{
+	union power_supply_propval pval = { .intval = current_ma * 1000 };
+
+	power_supply_set_current_limit(chip->parallel_psy, pval.intval);
+	chip->parallel_psy->set_property(chip->parallel_psy,
+		POWER_SUPPLY_PROP_CURRENT_MAX, &pval);
+}
+
+static void smbchg_configure_parallel_chg(struct smbchg_chip *chip, bool enable)
+{
+	power_supply_set_present(chip->parallel_psy, enable);
+
+	/* Use the lowest possible smb1351 mA, i.e. 500mA for usb_chg_current */
+	if (enable)
+		smbchg_set_parallel_ma(chip, 0);
+}
+
 static void smbchg_enable_charger(struct smbchg_chip *chip)
 {
 	smbchg_usb_suspend(chip, false);
 	smbchg_charging_en(chip, true);
+	smbchg_configure_parallel_chg(chip, true);
 
 	smbchg_sec_masked_write(chip, chip->usb_chgpth_base + USB_AICL_CFG,
 				AICL_EN_BIT, 0);
@@ -5680,6 +5700,7 @@ static void smbchg_enable_charger(struct smbchg_chip *chip)
 static void smbchg_disable_charger(struct smbchg_chip *chip)
 {
 	power_supply_changed(&chip->batt_psy);
+	smbchg_configure_parallel_chg(chip, false);
 	smbchg_charging_en(chip, false);
 	smbchg_usb_suspend(chip, true);
 }
@@ -5737,7 +5758,7 @@ static int smbchg_battery_set_property(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_PROP_BATTERY_CHARGING_ENABLED:
 		mutex_lock(&chip->chg_lock);
-		smbchg_charging_en(chip, val->intval);
+		smbchg_configure_parallel_chg(chip, val->intval);
 		mutex_unlock(&chip->chg_lock);
 		break;
 	default:
@@ -6853,7 +6874,8 @@ static int smbchg_hw_init(struct smbchg_chip *chip)
 			| I_TERM_BIT | AUTO_RECHG_BIT | CHARGER_INHIBIT_BIT,
 			CHG_EN_POLARITY_BIT
 			| (chip->chg_inhibit_en ? CHARGER_INHIBIT_BIT : 0)
-			| (chip->iterm_disabled ? I_TERM_BIT : 0));
+			| (chip->iterm_disabled ? I_TERM_BIT : 0)
+			| (IS_ENABLED(CONFIG_MACH_ZL1) ? P2F_CHG_TRAN : 0));
 	if (rc < 0) {
 		dev_err(chip->dev, "Couldn't set chgr_cfg2 rc=%d\n", rc);
 		return rc;
@@ -7965,7 +7987,7 @@ static int smbchg_probe(struct spmi_device *spmi)
 	struct power_supply *usb_psy, *typec_psy = NULL;
 	struct qpnp_vadc_chip *vadc_dev = NULL, *vchg_vadc_dev = NULL;
 	const char *typec_psy_name;
-#if defined(CONFIG_MACH_ZL1) && defined(CONFIG_SMB1351_USB_CHARGER)
+#ifdef CONFIG_MACH_ZL1
 	struct power_supply *parallel_psy;
 #endif
 
@@ -7975,16 +7997,13 @@ static int smbchg_probe(struct spmi_device *spmi)
 		return -EPROBE_DEFER;
 	}
 
-#if defined(CONFIG_MACH_ZL1) && defined(CONFIG_SMB1351_USB_CHARGER)
+#ifdef CONFIG_MACH_ZL1
 	parallel_psy = power_supply_get_by_name("usb-parallel");
 	if (!parallel_psy) {
 		pr_smb(PR_STATUS,
 			"Parallel supply not found, deferring probe\n");
 		return -EPROBE_DEFER;
 	}
-
-	/* Ensure secondary charger is disabled */
-	power_supply_set_present(parallel_psy, false);
 #endif
 
 	if (of_property_read_bool(spmi->dev.of_node, "qcom,external-typec")) {
@@ -8097,6 +8116,7 @@ static int smbchg_probe(struct spmi_device *spmi)
 		return PTR_ERR(chip->aicl_deglitch_short_votable);
 
 #ifdef CONFIG_MACH_ZL1
+	chip->parallel_psy = parallel_psy;
 	mutex_init(&chip->chg_lock);
 #endif
 	INIT_WORK(&chip->usb_set_online_work, smbchg_usb_update_online_work);
