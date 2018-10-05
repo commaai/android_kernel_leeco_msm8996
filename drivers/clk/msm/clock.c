@@ -647,6 +647,60 @@ unsigned long clk_get_rate(struct clk *clk)
 }
 EXPORT_SYMBOL(clk_get_rate);
 
+#ifdef CONFIG_MACH_ZL1
+struct clk_rate_pair {
+	const char *name;
+	unsigned long rate;
+};
+
+static const struct clk_rate_pair zl1_adj_clks[] = {
+	{
+		.name = "ahb_clk_src",
+		.rate = 19200000
+	},
+	{
+		.name = "cci_clk_src",
+		.rate = 19200000
+	},
+	{
+		.name = "maxi_clk_src",
+		.rate = 19200000
+	},
+	{
+		.name = "mclk0_clk_src",
+		.rate = 16666667
+	},
+	{
+		.name = "mclk2_clk_src",
+		.rate = 16666667
+	},
+	{
+		.name = "usb30_master_clk_src",
+		.rate = 19200000
+	},
+	{
+		.name = "vfe0_clk_src",
+		.rate = 100000000
+	},
+	{
+		.name = "vfe1_clk_src",
+		.rate = 100000000
+	}
+};
+
+static void adjust_clk_rate(const char *name, unsigned long *rate)
+{
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(zl1_adj_clks); i++) {
+		if (!strcmp(name, zl1_adj_clks[i].name)) {
+			*rate = zl1_adj_clks[i].rate;
+			break;
+		}
+	}
+}
+#endif
+
 int clk_set_rate(struct clk *clk, unsigned long rate)
 {
 	unsigned long start_rate;
@@ -656,6 +710,10 @@ int clk_set_rate(struct clk *clk, unsigned long rate)
 	if (IS_ERR_OR_NULL(clk))
 		return -EINVAL;
 	name = clk->dbg_name;
+
+#ifdef CONFIG_MACH_ZL1
+	adjust_clk_rate(name, &rate);
+#endif
 
 	if (!is_rate_valid(clk, rate))
 		return -EINVAL;
